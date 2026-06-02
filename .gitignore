@@ -83,6 +83,23 @@ uploads/
 .upm/
 replit.nix
 
+# ─── Database files ────────────────────────────────────────────
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# ─── Client build output ───────────────────────────────────────
+client/dist/
+
+# ─── Environment (never commit secrets) ───────────────────────
+.env
+.env.*
+!.env.example
+client/.env
+client/.env.*
+!client/.env.example
+
 # ─── Package Manager Locks (keep one, ignore extras) ──────────
 # Uncomment to pin to one package manager:
 # package-lock.json   # uncomment if using yarn/pnpm
