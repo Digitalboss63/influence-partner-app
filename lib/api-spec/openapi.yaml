@@ -3,13 +3,22 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Influence Partner API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: products
+    description: Product management
+  - name: creators
+    description: Creator management
+  - name: pipeline
+    description: CRM pipeline management
+  - name: scoring
+    description: Per-product creator scoring
+
 paths:
   /healthz:
     get:
@@ -24,6 +33,325 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /products:
+    get:
+      operationId: listProducts
+      tags: [products]
+      summary: List all products
+      responses:
+        "200":
+          description: Products list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductListResponse"
+    post:
+      operationId: createProduct
+      tags: [products]
+      summary: Create a product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductInput"
+      responses:
+        "201":
+          description: Product created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+
+  /products/{id}:
+    get:
+      operationId: getProduct
+      tags: [products]
+      summary: Get a product by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Product found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+        "404":
+          description: Not found
+    put:
+      operationId: updateProduct
+      tags: [products]
+      summary: Update a product
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProductInput"
+      responses:
+        "200":
+          description: Product updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+    delete:
+      operationId: deleteProduct
+      tags: [products]
+      summary: Delete a product
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+
+  /creators:
+    get:
+      operationId: listCreators
+      tags: [creators]
+      summary: List all creators
+      parameters:
+        - in: query
+          name: platform
+          schema:
+            type: string
+        - in: query
+          name: niche
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Creators list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatorListResponse"
+    post:
+      operationId: createCreator
+      tags: [creators]
+      summary: Create a creator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCreatorInput"
+      responses:
+        "201":
+          description: Creator created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatorResponse"
+
+  /creators/{id}:
+    get:
+      operationId: getCreator
+      tags: [creators]
+      summary: Get a creator by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Creator found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatorResponse"
+        "404":
+          description: Not found
+    put:
+      operationId: updateCreator
+      tags: [creators]
+      summary: Update a creator
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCreatorInput"
+      responses:
+        "200":
+          description: Creator updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatorResponse"
+    delete:
+      operationId: deleteCreator
+      tags: [creators]
+      summary: Delete a creator
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+
+  /creators/{id}/scores/{productId}:
+    get:
+      operationId: getCreatorScore
+      tags: [scoring]
+      summary: Get creator score for a specific product
+      description: Returns the per-product fit score for a creator. Scores are never global.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: productId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Score found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatorScoreResponse"
+
+  /pipeline:
+    get:
+      operationId: listPipelineEntries
+      tags: [pipeline]
+      summary: List pipeline entries
+      parameters:
+        - in: query
+          name: productId
+          schema:
+            type: string
+        - in: query
+          name: creatorId
+          schema:
+            type: string
+        - in: query
+          name: stage
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Pipeline entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineListResponse"
+    post:
+      operationId: createPipelineEntry
+      tags: [pipeline]
+      summary: Add a creator to the pipeline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePipelineEntryInput"
+      responses:
+        "201":
+          description: Entry created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineEntryResponse"
+
+  /pipeline/{id}:
+    get:
+      operationId: getPipelineEntry
+      tags: [pipeline]
+      summary: Get a pipeline entry by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Entry found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineEntryResponse"
+    put:
+      operationId: updatePipelineEntry
+      tags: [pipeline]
+      summary: Update pipeline entry (stage, notes, deal terms)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePipelineEntryInput"
+      responses:
+        "200":
+          description: Entry updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineEntryResponse"
+    delete:
+      operationId: deletePipelineEntry
+      tags: [pipeline]
+      summary: Remove a pipeline entry
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +362,401 @@ components:
       required:
         - status
 
+    DeleteResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        deleted:
+          type: string
+      required:
+        - success
+        - deleted
+
+    # ─── Products ──────────────────────────────────────────────────────────────
+
+    ProductData:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        website:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        targetCustomer:
+          type: string
+        mainBenefit:
+          type: string
+        price:
+          type: string
+        commissionOffer:
+          type: number
+        status:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - name
+        - website
+        - description
+        - category
+        - targetCustomer
+        - mainBenefit
+        - price
+        - commissionOffer
+        - status
+
+    ProductResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/ProductData"
+      required:
+        - data
+
+    ProductListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductData"
+        count:
+          type: integer
+      required:
+        - data
+        - count
+
+    CreateProductInput:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        website:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        targetCustomer:
+          type: string
+        mainBenefit:
+          type: string
+        price:
+          type: string
+        commissionOffer:
+          type: number
+        status:
+          type: string
+      required:
+        - id
+        - name
+        - website
+        - description
+        - category
+        - targetCustomer
+        - mainBenefit
+        - price
+        - commissionOffer
+
+    UpdateProductInput:
+      type: object
+      properties:
+        name:
+          type: string
+        website:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        targetCustomer:
+          type: string
+        mainBenefit:
+          type: string
+        price:
+          type: string
+        commissionOffer:
+          type: number
+        status:
+          type: string
+
+    # ─── Creators ──────────────────────────────────────────────────────────────
+
+    CreatorData:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        handle:
+          type: string
+        platform:
+          type: string
+        niche:
+          type: string
+        creatorType:
+          type: string
+        followerCount:
+          type: integer
+        engagementRate:
+          type: number
+        audienceMatch:
+          type: integer
+        platformFit:
+          type: integer
+        productFit:
+          type: integer
+        competitiveConflict:
+          type: integer
+        pipelineStage:
+          type: string
+        avatarUrl:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - name
+        - handle
+        - platform
+        - niche
+        - creatorType
+        - followerCount
+        - engagementRate
+
+    CreatorResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/CreatorData"
+      required:
+        - data
+
+    CreatorListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreatorData"
+        count:
+          type: integer
+      required:
+        - data
+        - count
+
+    CreateCreatorInput:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        handle:
+          type: string
+        platform:
+          type: string
+        niche:
+          type: string
+        creatorType:
+          type: string
+        followerCount:
+          type: integer
+        engagementRate:
+          type: number
+        audienceMatch:
+          type: integer
+        platformFit:
+          type: integer
+        productFit:
+          type: integer
+        competitiveConflict:
+          type: integer
+        avatarUrl:
+          type: string
+      required:
+        - id
+        - name
+        - handle
+        - platform
+        - niche
+        - creatorType
+        - followerCount
+        - engagementRate
+
+    UpdateCreatorInput:
+      type: object
+      properties:
+        name:
+          type: string
+        handle:
+          type: string
+        platform:
+          type: string
+        niche:
+          type: string
+        creatorType:
+          type: string
+        followerCount:
+          type: integer
+        engagementRate:
+          type: number
+        audienceMatch:
+          type: integer
+        platformFit:
+          type: integer
+        productFit:
+          type: integer
+        competitiveConflict:
+          type: integer
+
+    # ─── Creator Scores ────────────────────────────────────────────────────────
+
+    CreatorScoreData:
+      type: object
+      properties:
+        id:
+          type: string
+        creatorId:
+          type: string
+        productId:
+          type: string
+        fitScore:
+          type: number
+        audienceMatch:
+          type: number
+        platformFit:
+          type: number
+        productFit:
+          type: number
+        engagementScore:
+          type: number
+        conflictScore:
+          type: number
+        fitLabel:
+          type: string
+        suggestedCommission:
+          type: string
+        scoringMethod:
+          type: string
+      required:
+        - id
+        - creatorId
+        - productId
+        - fitScore
+        - fitLabel
+        - scoringMethod
+
+    CreatorScoreResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/CreatorScoreData"
+      required:
+        - data
+
+    # ─── Pipeline ──────────────────────────────────────────────────────────────
+
+    PipelineEntryData:
+      type: object
+      properties:
+        id:
+          type: string
+        productId:
+          type: string
+        creatorId:
+          type: string
+        stage:
+          type: string
+        notes:
+          type: string
+        proposedRate:
+          type: number
+        agreedRate:
+          type: number
+        dealType:
+          type: string
+        priority:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - productId
+        - creatorId
+        - stage
+
+    PipelineEntryResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/PipelineEntryData"
+      required:
+        - data
+
+    PipelineListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PipelineEntryData"
+        count:
+          type: integer
+      required:
+        - data
+        - count
+
+    CreatePipelineEntryInput:
+      type: object
+      properties:
+        id:
+          type: string
+        productId:
+          type: string
+        creatorId:
+          type: string
+        stage:
+          type: string
+        notes:
+          type: string
+        proposedRate:
+          type: number
+        priority:
+          type: string
+      required:
+        - id
+        - productId
+        - creatorId
+
+    UpdatePipelineEntryInput:
+      type: object
+      properties:
+        stage:
+          type: string
+        notes:
+          type: string
+        proposedRate:
+          type: number
+        agreedRate:
+          type: number
+        dealType:
+          type: string
+        priority:
+          type: string
