@@ -1,162 +1,131 @@
-# Phase 2 Sprint 1 — Backend Persistence Foundation
+# Phase 2 Sprint 1 — Backend Persistence
 
-**Completed:** 2026-06-02  
-**Status:** ✅ Implementation complete. Awaiting `DATABASE_URL` (PostgreSQL) to run DB push + seed.
-
----
-
-## What Was Implemented
-
-### 1. Database Schema (`lib/db/src/schema/`)
-
-6 tables defined using Drizzle ORM (PostgreSQL dialect):
-
-| Table | File | Purpose |
-|---|---|---|
-| `products` | `products.ts` | Product definitions with status lifecycle |
-| `product_intelligence_snapshots` | `products.ts` | Versioned intelligence cache per product |
-| `creators` | `creators.ts` | Creator profiles with raw score dimensions |
-| `creator_scores` | `creators.ts` | **Per-product** fit scores (never global) |
-| `pipeline_entries` | `pipeline.ts` | Creator × Product pipeline with deal terms |
-| `pipeline_events` | `pipeline.ts` | Immutable audit trail of all stage transitions |
-| `outreach_messages` | `pipeline.ts` | Saved outreach with status tracking |
-
-### 2. API Server — Express Routes (`artifacts/api-server/src/routes/`)
-
-All routes are registered under `/api`:
-
-| Method | Route | Description |
-|---|---|---|
-| GET | `/api/healthz` | Server + DB health |
-| GET | `/api/products` | List products |
-| GET | `/api/products/:id` | Get product |
-| POST | `/api/products` | Create product |
-| PUT | `/api/products/:id` | Update product |
-| DELETE | `/api/products/:id` | Delete product |
-| GET | `/api/creators` | List creators (optional: `?platform=`, `?niche=`) |
-| GET | `/api/creators/:id` | Get creator |
-| GET | `/api/creators/:id/scores/:productId` | **Per-product score** (computed on-the-fly if not cached) |
-| POST | `/api/creators` | Create creator |
-| PUT | `/api/creators/:id` | Update creator |
-| DELETE | `/api/creators/:id` | Delete creator |
-| GET | `/api/pipeline` | List entries (optional: `?productId=`, `?creatorId=`, `?stage=`) |
-| GET | `/api/pipeline/:id` | Get entry |
-| POST | `/api/pipeline` | Add creator to pipeline |
-| PUT | `/api/pipeline/:id` | Update entry (auto-logs stage change events) |
-| DELETE | `/api/pipeline/:id` | Remove entry |
-
-### 3. Session Foundation (`artifacts/api-server/src/middlewares/session.ts`)
-
-- `SESSION_SECRET` env var is consumed and used to sign cookies via `cookie-parser`
-- Placeholder middleware that will extend to full auth in Sprint 2
-- No routes are gated behind login yet (per spec: "Do not block the app behind login yet")
-
-### 4. Scoring Engine (`artifacts/api-server/src/lib/scoring.ts`)
-
-- Server-side mirror of the frontend `scoring.ts`
-- Same formula: `audienceMatch*0.30 + engScore*0.20 + platformFit*0.15 + productFit*0.20 + conflictScore*0.15`
-- Scores computed on-the-fly per `GET /api/creators/:id/scores/:productId`
-- Results cached in `creator_scores` table after first computation
-- Phase 2B: Replace formula with LLM-backed per-product scoring
-
-### 5. Seed Data (`artifacts/api-server/src/seed.ts`)
-
-Contains all Phase 1D mock data:
-- 3 products (AppBoost Pro, FitCoach Elite, WealthTrack)
-- 5 creators (Tara Simmons, Mark Johnson, Elena Fit, Jason Builds, Mia Wellness)
-- 3 pipeline entries with initial audit events
-
-### 6. Frontend Compatibility Adapter (`artifacts/influence-partner/src/lib/api.ts`)
-
-- Typed API client (fetch-based)
-- React Query hooks: `useProducts`, `useProduct`, `useCreators`, `useCreator`, `usePipeline`
-- Shape adapter: API responses converted to match existing `Creator`/`Product` types (with `fitScore`, `fitLabel`, `suggestedCommission` computed client-side from raw dimensions)
-- **AppContext unchanged** — existing pages continue to work with localStorage
-- Pages can opt into API-backed data one at a time by replacing `useAppContext()` with the new hooks
-
-### 7. OpenAPI Spec (`lib/api-spec/openapi.yaml`)
-
-Updated with all new routes and schemas. Source of truth for orval-generated client code.
-
-### 8. pnpm Workspace — Windows Compatibility
-
-Added `node-linker=hoisted` to `.npmrc` to handle Windows exFAT volume (which doesn't support symlinks or NTFS junctions). Workspace packages in `@workspace/*` are resolved via hoisted install.
+**Status:** ✅ Complete  
+**Date:** 2026-06-03
 
 ---
 
-## How to Run Locally (Replit)
+## What Was Built
+
+Sprint 1 establishes the full persistence layer for the Influence Partner App. The frontend continues to run on localStorage/mock data (no migration yet). The backend now has a working database, seeded data, and REST API routes for all core entities.
+
+---
+
+## 1. Drizzle Schema — `lib/db/src/schema/index.ts`
+
+Seven tables created with proper foreign keys, enums, unique constraints, and Zod insert/select schemas.
+
+| Table | Purpose |
+|---|---|
+| `products` | Product campaign definitions |
+| `product_intelligence_snapshots` | Versioned intelligence analysis per product |
+| `creators` | Creator profiles with scoring inputs |
+| `creator_scores` | Per-product fit scores (unique per creator × product) |
+| `pipeline_entries` | Creator × product pipeline stage tracking |
+| `pipeline_events` | Immutable audit trail of all stage changes |
+| `outreach_messages` | Saved outreach content with channel + tone context |
+
+**Enums pushed to Postgres:**
+- `platform`: YouTube, Instagram, TikTok
+- `creator_type`: Micro, Mid-Tier, Macro, Celebrity
+- `fit_label`: Excellent Partner, Strong Fit, Possible Fit, Low Priority
+- `pipeline_stage`: New, Contacted, Interested, Negotiating, Active, Rejected
+- `outreach_channel`: Email, Instagram DM, TikTok DM, YouTube Sponsorship
+- `outreach_tone`: Direct, Friendly, Professional, High-Commission Offer
+
+---
+
+## 2. DB Push
 
 ```bash
-# 1. Set environment variables (in Replit secrets)
-DATABASE_URL=postgresql://...
-SESSION_SECRET=<random-32-char-secret>
-PORT=3001
-CORS_ORIGINS=http://localhost:5173
-
-# 2. Install
-pnpm install
-
-# 3. Push schema to DB
 pnpm --filter @workspace/db run push
-
-# 4. Seed data
-pnpm --filter @workspace/api-server run seed
-
-# 5. Start API server
-pnpm --filter @workspace/api-server run dev
-
-# 6. Start frontend (separate terminal)
-pnpm --filter @workspace/influence-partner run dev
 ```
 
-## How to Verify Health Endpoint
+Result: `[✓] Changes applied` — all 7 tables + 6 enum types created in Postgres.
 
+---
+
+## 3. Seed Script — `scripts/src/seed.ts`
+
+Run with:
 ```bash
-curl http://localhost:3001/api/healthz
-# Expected: {"status":"ok"}
+pnpm --filter @workspace/scripts run seed
 ```
 
-## How to Verify DB Push
+**Seed counts:**
+| Entity | Count |
+|---|---|
+| Products | 3 |
+| Product Intelligence Snapshots | 3 |
+| Creators | 15 |
+| Creator Scores | 45 (15 × 3 products) |
+| Pipeline Entries | 15 (all creators vs AppBoost Pro) |
+| Pipeline Events | 15 (one initial event per entry) |
+| Outreach Messages | 3 (one per product, top creator) |
 
-```bash
-# After running pnpm --filter @workspace/db run push:
-# Connect to your PostgreSQL DB and verify tables exist:
-# \dt  →  should show: products, product_intelligence_snapshots, creators,
-#          creator_scores, pipeline_entries, pipeline_events, outreach_messages
+**Products seeded:** AppBoost Pro (Productivity, $49/mo, 35%), FitCoach Elite (Fitness, $29/mo, 38%), WealthTrack (Finance, $19/mo, 40%)
+
+---
+
+## 4. API Routes — `artifacts/api-server/src/routes/`
+
+New route files:
+
+| File | Routes |
+|---|---|
+| `products.ts` | GET /api/products, GET /api/products/:id, POST /api/products, PUT /api/products/:id, DELETE /api/products/:id |
+| `creators.ts` | GET /api/creators, GET /api/creators/:id, GET /api/creators/:id/scores, GET /api/creators/:id/scores/:productId, POST /api/creators, PUT /api/creators/:id, DELETE /api/creators/:id |
+| `pipeline.ts` | GET /api/pipeline (filterable by productId/creatorId), GET /api/pipeline/:id, GET /api/pipeline/:id/events, POST /api/pipeline, PUT /api/pipeline/:id (auto-records stage change event), POST /api/pipeline/:id/events, DELETE /api/pipeline/:id |
+| `outreach.ts` | GET /api/outreach (filterable by productId/creatorId), GET /api/outreach/:id, POST /api/outreach, DELETE /api/outreach/:id |
+
+All routes use:
+- Zod input validation via `drizzle-zod` insert schemas
+- `drizzle-orm` queries with proper `eq`/`and` operators
+- 400 on bad input with error details, 404 on not found
+- Express 5 async error propagation
+
+---
+
+## 5. TypeCheck Results
+
+```
+0 errors across all 4 packages:
+  artifacts/api-server    ✓
+  artifacts/influence-partner  ✓
+  artifacts/mockup-sandbox     ✓
+  scripts                 ✓
 ```
 
 ---
 
-## What Is Now Persistent
+## 6. Verification
 
-| Data | Status | Notes |
-|---|---|---|
-| Products | ✅ Persistent | Seeded from Phase 1D mocks. POST/PUT/DELETE working. |
-| Creators | ✅ Persistent | Seeded from Phase 1D mocks. Raw score dimensions stored. |
-| Pipeline entries | ✅ Persistent | With full audit trail via pipeline_events. |
-| Creator scores | ✅ Persistent | Per-product. Computed on-demand, then cached. |
-| Product intelligence snapshots | ✅ Schema ready | Table exists. Seed data pending LLM integration (Phase 2B). |
-| Outreach messages | ✅ Schema ready | Table exists. Endpoint and seeding in Sprint 2. |
-| Session data | 🟡 Foundation only | Cookie parser wired. No login yet. |
+| Check | Result |
+|---|---|
+| GET /api/healthz | ✅ `{"status":"ok"}` |
+| GET /api/products | ✅ 3 rows |
+| GET /api/creators | ✅ 15 rows |
+| GET /api/pipeline | ✅ 15 rows |
+| GET /api/outreach | ✅ 3 rows |
+| Postgres tables | ✅ 7 tables |
+| Frontend loads | ✅ No regressions |
+| TypeScript | ✅ 0 errors |
+
+---
 
 ## What Remains Mock
 
-| Item | Current State | Plan |
-|---|---|---|
-| Frontend data (AppContext) | localStorage + mock defaults | Migrates to API per-page in Sprint 2 |
-| Creator scores (existing UI) | Formula-computed from hardcoded creator fields | Will read from API in Sprint 2 |
-| Intelligence snapshots (ProductIntake) | Deterministic lookup engine | LLM-backed in Sprint 2 |
-| Outreach messages | Template-generated, not persisted | Persistence in Sprint 2 |
+The frontend (`artifacts/influence-partner`) still reads from localStorage/AppContext. The React Query hooks exist in `lib/api-client-react` but are not yet wired to the frontend pages.
+
+**Sprint 2 will:**
+- Wire the frontend AppContext to the API (replace localStorage)
+- Implement dynamic per-product scoring (currently seeded with base scores)
+- Add LLM-powered intelligence generation
 
 ---
 
-## Known Risks / TODOs
+## Next Recommended Step
 
-| Risk | Severity | Notes |
-|---|---|---|
-| `DATABASE_URL` not yet configured | High | Must provision PostgreSQL before API can start |
-| Windows `node-linker=hoisted` | Low | Works correctly; `.npmrc` documented |
-| `pnpm --filter @workspace/db run push` never run | Medium | Schema exists but tables not created until push runs |
-| Replit-specific `vite.config.ts` requires `PORT`/`BASE_PATH` | Low | Works on Replit; local build requires env var |
-| Orval regeneration not automated | Low | Run `pnpm --filter @workspace/api-spec run generate` to regenerate client after openapi.yaml changes |
-| Session auth not blocking routes | Intentional | Per spec: "Do not block the app behind login yet" |
+**Sprint 2: Frontend API Integration**
+
+Replace `AppContext` localStorage reads with React Query hooks calling the live API routes. Migration order: products → creators → pipeline → outreach.

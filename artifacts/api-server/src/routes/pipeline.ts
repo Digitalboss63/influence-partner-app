@@ -1,193 +1,156 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
-import { z } from "zod/v4";
 import {
   db,
   pipelineEntriesTable,
   pipelineEventsTable,
-  outreachMessagesTable,
+  insertPipelineEntrySchema,
+  insertPipelineEventSchema,
 } from "@workspace/db";
-import { generateId } from "../lib/id";
-import { validateBody } from "../lib/validate";
 
-const router = Router();
+const router: IRouter = Router();
 
-// ─── Validation ───────────────────────────────────────────────────────────────
+router.get("/pipeline", async (req, res) => {
+  const { productId, creatorId } = req.query as Record<string, string | undefined>;
 
-const STAGES = ["New", "Contacted", "Interested", "Negotiating", "Active", "Rejected"] as const;
-
-const CreatePipelineEntrySchema = z.object({
-  id: z.string().optional(),
-  productId: z.string().min(1),
-  creatorId: z.string().min(1),
-  stage: z.enum(STAGES).default("New"),
-  notes: z.string().max(2000).optional().nullable(),
-  proposedRate: z.number().positive().optional().nullable(),
-  priority: z.enum(["High", "Medium", "Low"]).default("Medium"),
-});
-
-const UpdatePipelineEntrySchema = z.object({
-  stage: z.enum(STAGES).optional(),
-  notes: z.string().max(2000).optional().nullable(),
-  proposedRate: z.number().positive().optional().nullable(),
-  agreedRate: z.number().positive().optional().nullable(),
-  dealType: z.string().max(100).optional().nullable(),
-  priority: z.enum(["High", "Medium", "Low"]).optional(),
-  stageNote: z.string().max(500).optional(), // Written to pipeline_events
-});
-
-// ─── Routes ──────────────────────────────────────────────────────────────────
-
-/** GET /api/pipeline */
-router.get("/", async (req, res, next) => {
-  try {
-    let rows = await db.select().from(pipelineEntriesTable);
-    const { productId, creatorId, stage } = req.query;
-    if (productId && typeof productId === "string") {
-      rows = rows.filter((r) => r.productId === productId);
-    }
-    if (creatorId && typeof creatorId === "string") {
-      rows = rows.filter((r) => r.creatorId === creatorId);
-    }
-    if (stage && typeof stage === "string") {
-      rows = rows.filter((r) => r.stage === stage);
-    }
-    res.json({ data: rows, count: rows.length });
-  } catch (err) {
-    next(err);
-  }
-});
-
-/** GET /api/pipeline/:id */
-router.get("/:id", async (req, res, next) => {
-  try {
-    const rows = await db
+  let rows;
+  if (productId && creatorId) {
+    rows = await db
       .select()
       .from(pipelineEntriesTable)
-      .where(eq(pipelineEntriesTable.id, String(req.params.id)))
-      .limit(1);
-
-    if (rows.length === 0) {
-      res.status(404).json({ error: "Pipeline entry not found" });
-      return;
-    }
-    res.json({ data: rows[0] });
-  } catch (err) {
-    next(err);
+      .where(
+        and(
+          eq(pipelineEntriesTable.productId, productId),
+          eq(pipelineEntriesTable.creatorId, creatorId),
+        ),
+      );
+  } else if (productId) {
+    rows = await db
+      .select()
+      .from(pipelineEntriesTable)
+      .where(eq(pipelineEntriesTable.productId, productId));
+  } else if (creatorId) {
+    rows = await db
+      .select()
+      .from(pipelineEntriesTable)
+      .where(eq(pipelineEntriesTable.creatorId, creatorId));
+  } else {
+    rows = await db
+      .select()
+      .from(pipelineEntriesTable)
+      .orderBy(pipelineEntriesTable.updatedAt);
   }
+
+  res.json(rows);
 });
 
-/** POST /api/pipeline */
-router.post("/", validateBody(CreatePipelineEntrySchema), async (req, res, next) => {
-  try {
-    const body = req.body as z.infer<typeof CreatePipelineEntrySchema>;
-    const id = body.id ?? generateId("pipe");
-    const now = new Date();
+router.get("/pipeline/:id", async (req, res) => {
+  const { id } = req.params;
+  const rows = await db
+    .select()
+    .from(pipelineEntriesTable)
+    .where(eq(pipelineEntriesTable.id, id));
+  if (rows.length === 0) {
+    res.status(404).json({ error: "Pipeline entry not found" });
+    return;
+  }
+  res.json(rows[0]);
+});
 
-    await db.insert(pipelineEntriesTable).values({
-      id,
-      productId: body.productId,
-      creatorId: body.creatorId,
-      stage: body.stage,
-      notes: body.notes ?? null,
-      proposedRate: body.proposedRate ?? null,
-      priority: body.priority,
-      createdAt: now,
-      updatedAt: now,
-    });
+router.get("/pipeline/:id/events", async (req, res) => {
+  const { id } = req.params;
+  const events = await db
+    .select()
+    .from(pipelineEventsTable)
+    .where(eq(pipelineEventsTable.pipelineEntryId, id))
+    .orderBy(pipelineEventsTable.createdAt);
+  res.json(events);
+});
 
-    // Log initial pipeline event
+router.post("/pipeline", async (req, res) => {
+  const parsed = insertPipelineEntrySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid input", details: parsed.error.issues });
+    return;
+  }
+  const [entry] = await db
+    .insert(pipelineEntriesTable)
+    .values(parsed.data)
+    .returning();
+
+  await db.insert(pipelineEventsTable).values({
+    pipelineEntryId: entry.id,
+    fromStage: null,
+    toStage: entry.stage,
+    notes: "Entry created",
+  });
+
+  res.status(201).json(entry);
+});
+
+router.put("/pipeline/:id", async (req, res) => {
+  const { id } = req.params;
+  const parsed = insertPipelineEntrySchema.partial().safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid input", details: parsed.error.issues });
+    return;
+  }
+
+  const existing = await db
+    .select()
+    .from(pipelineEntriesTable)
+    .where(eq(pipelineEntriesTable.id, id));
+  if (existing.length === 0) {
+    res.status(404).json({ error: "Pipeline entry not found" });
+    return;
+  }
+
+  const prev = existing[0];
+  const [updated] = await db
+    .update(pipelineEntriesTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(pipelineEntriesTable.id, id))
+    .returning();
+
+  if (parsed.data.stage && parsed.data.stage !== prev.stage) {
     await db.insert(pipelineEventsTable).values({
-      id: generateId("evt"),
       pipelineEntryId: id,
-      fromStage: null,
-      toStage: body.stage,
-      note: "Entry created",
-      changedAt: now,
+      fromStage: prev.stage,
+      toStage: parsed.data.stage,
+      notes: (req.body as { stageNote?: string }).stageNote ?? null,
     });
-
-    const rows = await db
-      .select()
-      .from(pipelineEntriesTable)
-      .where(eq(pipelineEntriesTable.id, id))
-      .limit(1);
-
-    res.status(201).json({ data: rows[0] });
-  } catch (err) {
-    next(err);
   }
+
+  res.json(updated);
 });
 
-/** PUT /api/pipeline/:id */
-router.put("/:id", validateBody(UpdatePipelineEntrySchema), async (req, res, next) => {
-  try {
-    const existing = await db
-      .select()
-      .from(pipelineEntriesTable)
-      .where(eq(pipelineEntriesTable.id, String(req.params.id)))
-      .limit(1);
-
-    if (existing.length === 0) {
-      res.status(404).json({ error: "Pipeline entry not found" });
-      return;
-    }
-
-    const current = existing[0];
-    const body = req.body as z.infer<typeof UpdatePipelineEntrySchema>;
-    const now = new Date();
-
-    // If stage is changing, log an event
-    if (body.stage && body.stage !== current.stage) {
-      await db.insert(pipelineEventsTable).values({
-        id: generateId("evt"),
-        pipelineEntryId: String(req.params.id),
-        fromStage: current.stage,
-        toStage: body.stage,
-        note: body.stageNote ?? null,
-        changedAt: now,
-      });
-    }
-
-    const { stageNote: _stageNote, ...updateFields } = body;
-    await db
-      .update(pipelineEntriesTable)
-      .set({ ...updateFields, updatedAt: now })
-      .where(eq(pipelineEntriesTable.id, String(req.params.id)));
-
-    const updated = await db
-      .select()
-      .from(pipelineEntriesTable)
-      .where(eq(pipelineEntriesTable.id, String(req.params.id)))
-      .limit(1);
-
-    res.json({ data: updated[0] });
-  } catch (err) {
-    next(err);
+router.post("/pipeline/:id/events", async (req, res) => {
+  const { id } = req.params;
+  const parsed = insertPipelineEventSchema
+    .omit({ pipelineEntryId: true })
+    .safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid input", details: parsed.error.issues });
+    return;
   }
+  const [event] = await db
+    .insert(pipelineEventsTable)
+    .values({ ...parsed.data, pipelineEntryId: id })
+    .returning();
+  res.status(201).json(event);
 });
 
-/** DELETE /api/pipeline/:id */
-router.delete("/:id", async (req, res, next) => {
-  try {
-    const existing = await db
-      .select()
-      .from(pipelineEntriesTable)
-      .where(eq(pipelineEntriesTable.id, String(req.params.id)))
-      .limit(1);
-
-    if (existing.length === 0) {
-      res.status(404).json({ error: "Pipeline entry not found" });
-      return;
-    }
-
-    await db
-      .delete(pipelineEntriesTable)
-      .where(eq(pipelineEntriesTable.id, String(req.params.id)));
-
-    res.json({ success: true, deleted: String(req.params.id) });
-  } catch (err) {
-    next(err);
+router.delete("/pipeline/:id", async (req, res) => {
+  const { id } = req.params;
+  const rows = await db
+    .delete(pipelineEntriesTable)
+    .where(eq(pipelineEntriesTable.id, id))
+    .returning();
+  if (rows.length === 0) {
+    res.status(404).json({ error: "Pipeline entry not found" });
+    return;
   }
+  res.json({ deleted: true, id });
 });
 
 export default router;

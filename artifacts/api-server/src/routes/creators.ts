@@ -1,270 +1,106 @@
-import { Router } from "express";
-import { eq, and } from "drizzle-orm";
-import { z } from "zod/v4";
-import { db, creatorsTable, creatorScoresTable, productsTable } from "@workspace/db";
-import { generateId } from "../lib/id";
-import { validateBody } from "../lib/validate";
+import { Router, type IRouter } from "express";
+import { eq } from "drizzle-orm";
 import {
-  computeFitScore,
-  getFitLabel,
-  getSuggestedCommission,
-} from "../lib/scoring";
+  db,
+  creatorsTable,
+  creatorScoresTable,
+  insertCreatorSchema,
+} from "@workspace/db";
 
-const router = Router();
+const router: IRouter = Router();
 
-// ─── Validation ───────────────────────────────────────────────────────────────
-
-const CreateCreatorSchema = z.object({
-  id: z.string().optional(),
-  name: z.string().min(1).max(200),
-  handle: z.string().min(1).max(100),
-  platform: z.enum(["YouTube", "Instagram", "TikTok"]),
-  niche: z.string().min(1).max(200),
-  creatorType: z.enum(["Micro", "Mid-Tier", "Macro", "Celebrity"]),
-  followerCount: z.number().int().nonnegative().default(0),
-  engagementRate: z.number().nonnegative().default(0),
-  audienceMatch: z.number().int().min(0).max(100).default(50),
-  platformFit: z.number().int().min(0).max(100).default(50),
-  productFit: z.number().int().min(0).max(100).default(50),
-  competitiveConflict: z.number().int().min(0).max(100).default(0),
-  avatarUrl: z.string().optional().nullable(),
-  recommendedDeal: z.string().optional().nullable(),
-  audienceFitSummary: z.string().optional().nullable(),
-  platformFitSummary: z.string().optional().nullable(),
-  engagementQuality: z.string().optional().nullable(),
-  competitorSignal: z.string().optional().nullable(),
-  productGapOpportunity: z.string().optional().nullable(),
-  whyGoodFit: z.string().optional().nullable(),
-  suggestedDealStructure: z.string().optional().nullable(),
-  suggestedOutreachAngle: z.string().optional().nullable(),
-  source: z.enum(["manual", "discovered", "imported"]).optional().default("manual"),
+router.get("/creators", async (_req, res) => {
+  const creators = await db
+    .select()
+    .from(creatorsTable)
+    .orderBy(creatorsTable.createdAt);
+  res.json(creators);
 });
 
-const UpdateCreatorSchema = CreateCreatorSchema.partial().omit({ id: true });
-
-// ─── Routes ──────────────────────────────────────────────────────────────────
-
-/** GET /api/creators */
-router.get("/", async (req, res, next) => {
-  try {
-    let rows = await db.select().from(creatorsTable);
-
-    const { platform, niche } = req.query;
-    if (platform && typeof platform === "string") {
-      rows = rows.filter((r) => r.platform === platform);
-    }
-    if (niche && typeof niche === "string") {
-      const n = niche.toLowerCase();
-      rows = rows.filter((r) => r.niche.toLowerCase().includes(n));
-    }
-
-    res.json({ data: rows, count: rows.length });
-  } catch (err) {
-    next(err);
+router.get("/creators/:id", async (req, res) => {
+  const { id } = req.params;
+  const rows = await db
+    .select()
+    .from(creatorsTable)
+    .where(eq(creatorsTable.id, id));
+  if (rows.length === 0) {
+    res.status(404).json({ error: "Creator not found" });
+    return;
   }
+  res.json(rows[0]);
 });
 
-/** GET /api/creators/:id */
-router.get("/:id", async (req, res, next) => {
-  try {
-    const rows = await db
-      .select()
-      .from(creatorsTable)
-      .where(eq(creatorsTable.id, String(req.params.id)))
-      .limit(1);
-
-    if (rows.length === 0) {
-      res.status(404).json({ error: "Creator not found" });
-      return;
-    }
-    res.json({ data: rows[0] });
-  } catch (err) {
-    next(err);
-  }
+router.get("/creators/:id/scores", async (req, res) => {
+  const { id } = req.params;
+  const scores = await db
+    .select()
+    .from(creatorScoresTable)
+    .where(eq(creatorScoresTable.creatorId, id));
+  res.json(scores);
 });
 
-/** GET /api/creators/:id/scores/:productId — per-product score */
-router.get("/:id/scores/:productId", async (req, res, next) => {
-  try {
-    const existing = await db
-      .select()
-      .from(creatorScoresTable)
-      .where(
-        and(
-          eq(creatorScoresTable.creatorId, String(req.params.id)),
-          eq(creatorScoresTable.productId, String(req.params.productId))
-        )
-      )
-      .limit(1);
-
-    if (existing.length > 0) {
-      res.json({ data: existing[0] });
-      return;
-    }
-
-    // Compute on-the-fly if not cached
-    const creatorRows = await db
-      .select()
-      .from(creatorsTable)
-      .where(eq(creatorsTable.id, String(req.params.id)))
-      .limit(1);
-
-    if (creatorRows.length === 0) {
-      res.status(404).json({ error: "Creator not found" });
-      return;
-    }
-
-    const productRows = await db
-      .select()
-      .from(productsTable)
-      .where(eq(productsTable.id, String(req.params.productId)))
-      .limit(1);
-
-    if (productRows.length === 0) {
-      res.status(404).json({ error: "Product not found" });
-      return;
-    }
-
-    const creator = creatorRows[0];
-    const fitScore = computeFitScore({
-      audienceMatch: creator.audienceMatch,
-      engagementRate: creator.engagementRate,
-      platformFit: creator.platformFit,
-      productFit: creator.productFit,
-      competitiveConflict: creator.competitiveConflict,
-    });
-    const fitLabel = getFitLabel(fitScore);
-    const suggestedCommission = getSuggestedCommission(fitLabel);
-
-    const id = generateId("score");
-    const now = new Date();
-
-    await db.insert(creatorScoresTable).values({
-      id,
-      creatorId: creator.id,
-      productId: String(req.params.productId),
-      fitScore,
-      audienceMatch: creator.audienceMatch,
-      platformFit: creator.platformFit,
-      productFit: creator.productFit,
-      engagementScore: Math.min(creator.engagementRate * 10, 100),
-      conflictScore: 100 - creator.competitiveConflict,
-      fitLabel,
-      suggestedCommission,
-      scoringMethod: "formula",
-      computedAt: now,
-    });
-
-    const scoreRows = await db
-      .select()
-      .from(creatorScoresTable)
-      .where(eq(creatorScoresTable.id, id))
-      .limit(1);
-
-    res.json({ data: scoreRows[0] });
-  } catch (err) {
-    next(err);
+router.get("/creators/:id/scores/:productId", async (req, res) => {
+  const { id, productId } = req.params;
+  const { and } = await import("drizzle-orm");
+  const rows = await db
+    .select()
+    .from(creatorScoresTable)
+    .where(
+      and(
+        eq(creatorScoresTable.creatorId, id),
+        eq(creatorScoresTable.productId, productId),
+      ),
+    );
+  if (rows.length === 0) {
+    res.status(404).json({ error: "Score not found for this creator/product" });
+    return;
   }
+  res.json(rows[0]);
 });
 
-/** POST /api/creators */
-router.post("/", validateBody(CreateCreatorSchema), async (req, res, next) => {
-  try {
-    const body = req.body as z.infer<typeof CreateCreatorSchema>;
-    const id = body.id ?? generateId("cre");
-    const now = new Date();
-
-    await db.insert(creatorsTable).values({
-      id,
-      name: body.name,
-      handle: body.handle,
-      platform: body.platform,
-      niche: body.niche,
-      creatorType: body.creatorType,
-      followerCount: body.followerCount ?? 0,
-      engagementRate: body.engagementRate ?? 0,
-      audienceMatch: body.audienceMatch ?? 50,
-      platformFit: body.platformFit ?? 50,
-      productFit: body.productFit ?? 50,
-      competitiveConflict: body.competitiveConflict ?? 0,
-      avatarUrl: body.avatarUrl ?? null,
-      recommendedDeal: body.recommendedDeal ?? null,
-      audienceFitSummary: body.audienceFitSummary ?? null,
-      platformFitSummary: body.platformFitSummary ?? null,
-      engagementQuality: body.engagementQuality ?? null,
-      competitorSignal: body.competitorSignal ?? null,
-      productGapOpportunity: body.productGapOpportunity ?? null,
-      whyGoodFit: body.whyGoodFit ?? null,
-      suggestedDealStructure: body.suggestedDealStructure ?? null,
-      suggestedOutreachAngle: body.suggestedOutreachAngle ?? null,
-      source: body.source ?? "manual",
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const rows = await db
-      .select()
-      .from(creatorsTable)
-      .where(eq(creatorsTable.id, id))
-      .limit(1);
-
-    res.status(201).json({ data: rows[0] });
-  } catch (err) {
-    next(err);
+router.post("/creators", async (req, res) => {
+  const parsed = insertCreatorSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid input", details: parsed.error.issues });
+    return;
   }
+  const [creator] = await db
+    .insert(creatorsTable)
+    .values(parsed.data)
+    .returning();
+  res.status(201).json(creator);
 });
 
-/** PUT /api/creators/:id */
-router.put("/:id", validateBody(UpdateCreatorSchema), async (req, res, next) => {
-  try {
-    const existing = await db
-      .select()
-      .from(creatorsTable)
-      .where(eq(creatorsTable.id, String(req.params.id)))
-      .limit(1);
-
-    if (existing.length === 0) {
-      res.status(404).json({ error: "Creator not found" });
-      return;
-    }
-
-    const body = req.body as z.infer<typeof UpdateCreatorSchema>;
-    await db
-      .update(creatorsTable)
-      .set({ ...body, updatedAt: new Date() })
-      .where(eq(creatorsTable.id, String(req.params.id)));
-
-    const updated = await db
-      .select()
-      .from(creatorsTable)
-      .where(eq(creatorsTable.id, String(req.params.id)))
-      .limit(1);
-
-    res.json({ data: updated[0] });
-  } catch (err) {
-    next(err);
+router.put("/creators/:id", async (req, res) => {
+  const { id } = req.params;
+  const parsed = insertCreatorSchema.partial().safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid input", details: parsed.error.issues });
+    return;
   }
+  const rows = await db
+    .update(creatorsTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(creatorsTable.id, id))
+    .returning();
+  if (rows.length === 0) {
+    res.status(404).json({ error: "Creator not found" });
+    return;
+  }
+  res.json(rows[0]);
 });
 
-/** DELETE /api/creators/:id */
-router.delete("/:id", async (req, res, next) => {
-  try {
-    const existing = await db
-      .select()
-      .from(creatorsTable)
-      .where(eq(creatorsTable.id, String(req.params.id)))
-      .limit(1);
-
-    if (existing.length === 0) {
-      res.status(404).json({ error: "Creator not found" });
-      return;
-    }
-
-    await db.delete(creatorsTable).where(eq(creatorsTable.id, String(req.params.id)));
-    res.json({ success: true, deleted: String(req.params.id) });
-  } catch (err) {
-    next(err);
+router.delete("/creators/:id", async (req, res) => {
+  const { id } = req.params;
+  const rows = await db
+    .delete(creatorsTable)
+    .where(eq(creatorsTable.id, id))
+    .returning();
+  if (rows.length === 0) {
+    res.status(404).json({ error: "Creator not found" });
+    return;
   }
+  res.json({ deleted: true, id });
 });
 
 export default router;
