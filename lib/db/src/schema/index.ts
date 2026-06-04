@@ -247,6 +247,46 @@ export const insertPipelineEventSchema = createInsertSchema(
 export type InsertPipelineEvent = z.infer<typeof insertPipelineEventSchema>;
 export type PipelineEvent = typeof pipelineEventsTable.$inferSelect;
 
+// ─── Partner Targets ─────────────────────────────────────────────────────────
+
+export const partnerTargetStatusEnum = pgEnum("partner_target_status", [
+  "Not Contacted",
+  "Contacted",
+  "Replied",
+  "Meeting Scheduled",
+  "Negotiating",
+  "Active Partner",
+  "Rejected",
+]);
+
+export const partnerTargetsTable = pgTable("partner_targets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  productId: uuid("product_id")
+    .notNull()
+    .references(() => productsTable.id, { onDelete: "cascade" }),
+  partnerCategory: text("partner_category").notNull(),
+  name: text("name").notNull(),
+  company: text("company"),
+  platform: text("platform"),
+  website: text("website"),
+  email: text("email"),
+  phone: text("phone"),
+  socialUrl: text("social_url"),
+  notes: text("notes"),
+  status: partnerTargetStatusEnum("status").notNull().default("Not Contacted"),
+  userId: text("user_id"),
+  organizationId: text("organization_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertPartnerTargetSchema = createInsertSchema(
+  partnerTargetsTable,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertPartnerTarget = z.infer<typeof insertPartnerTargetSchema>;
+export type PartnerTarget = typeof partnerTargetsTable.$inferSelect;
+export type PartnerTargetStatus = typeof partnerTargetStatusEnum.enumValues[number];
+
 // ─── Outreach Messages ────────────────────────────────────────────────────────
 
 export const outreachMessagesTable = pgTable("outreach_messages", {

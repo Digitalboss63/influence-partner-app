@@ -1,4 +1,12 @@
 export type Platform = 'YouTube' | 'Instagram' | 'TikTok';
+export type PartnerTargetStatus =
+  | 'Not Contacted'
+  | 'Contacted'
+  | 'Replied'
+  | 'Meeting Scheduled'
+  | 'Negotiating'
+  | 'Active Partner'
+  | 'Rejected';
 export type CreatorType = 'Micro' | 'Mid-Tier' | 'Macro' | 'Celebrity';
 export type FitLabel = 'Excellent Partner' | 'Strong Fit' | 'Possible Fit' | 'Low Priority';
 export type PipelineStage = 'New' | 'Contacted' | 'Interested' | 'Negotiating' | 'Active' | 'Rejected';

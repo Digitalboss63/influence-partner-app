@@ -10,6 +10,7 @@ import {
   Menu,
   X,
   Compass,
+  Crosshair,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +19,7 @@ const navItems = [
   { label: "Products", href: "/products", icon: Package },
   { label: "Discover Creators", href: "/discover", icon: Search },
   { label: "Partner Strategy", href: "/partner-strategy", icon: Compass },
+  { label: "Targets", href: "/targets", icon: Crosshair },
   { label: "Outreach", href: "/outreach", icon: MessageSquare },
   { label: "Pipeline", href: "/pipeline", icon: KanbanSquare },
 ];

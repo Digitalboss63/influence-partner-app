@@ -12,6 +12,7 @@ import OutreachGenerator from "@/pages/OutreachGenerator";
 import CRMPipeline from "@/pages/CRMPipeline";
 import PartnerStrategy from "@/pages/PartnerStrategy";
 import PartnerOutreachPlan from "@/pages/PartnerOutreachPlan";
+import PartnerTargets from "@/pages/PartnerTargets";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -28,6 +29,7 @@ function Router() {
         <Route path="/pipeline" component={CRMPipeline} />
         <Route path="/partner-strategy" component={PartnerStrategy} />
         <Route path="/partner-outreach" component={PartnerOutreachPlan} />
+        <Route path="/targets" component={PartnerTargets} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

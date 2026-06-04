@@ -123,6 +123,9 @@ export default function PartnerOutreachPlan() {
   const outreachAngle = useQueryParam("outreachAngle");
   const tierParam = useQueryParam("tier");
   const icon = useQueryParam("icon");
+  const targetName = useQueryParam("targetName");
+
+  const firstName = targetName ? targetName.trim().split(/\s+/)[0] : "";
 
   const [activeTab, setActiveTab] = useState<MessageKey>("firstEmail");
   const [saved, setSaved] = useState(false);
@@ -148,9 +151,11 @@ export default function PartnerOutreachPlan() {
 
   const getMessage = useCallback(
     (key: MessageKey): string => {
-      return editedMessages[key] || messages?.[key] || "";
+      const raw = editedMessages[key] || messages?.[key] || "";
+      if (!firstName) return raw;
+      return raw.replace(/\[First Name\]/gi, firstName);
     },
-    [editedMessages, messages]
+    [editedMessages, messages, firstName]
   );
 
   const setMessage = useCallback((key: MessageKey, val: string) => {
@@ -240,6 +245,16 @@ export default function PartnerOutreachPlan() {
         <ArrowLeft className="w-4 h-4" />
         Back to Partner Strategy
       </button>
+
+      {/* Target personalization banner */}
+      {targetName && (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-blue-200 bg-blue-50/70 text-sm">
+          <Users className="w-4 h-4 text-blue-600 flex-shrink-0" />
+          <span className="text-blue-800">
+            Personalising for <strong>{targetName}</strong> — <span className="font-mono text-xs bg-blue-100 px-1 rounded">[First Name]</span> placeholders replaced with <strong>{firstName}</strong>.
+          </span>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">

@@ -1,4 +1,4 @@
-import { PipelineStage } from "@/types/influencePartner";
+import { PipelineStage, PartnerTargetStatus } from "@/types/influencePartner";
 
 const BASE = "/api";
 
@@ -102,4 +102,74 @@ export const updatePipelineEntry = (
   request<ApiPipelineEntry>(`/pipeline/${entryId}`, {
     method: "PUT",
     body: JSON.stringify({ stage }),
+  });
+
+// ─── Partner Targets ─────────────────────────────────────────────────────────
+
+export interface ApiPartnerTarget {
+  id: string;
+  productId: string;
+  partnerCategory: string;
+  name: string;
+  company: string | null;
+  platform: string | null;
+  website: string | null;
+  email: string | null;
+  phone: string | null;
+  socialUrl: string | null;
+  notes: string | null;
+  status: PartnerTargetStatus;
+  userId: string | null;
+  organizationId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatePartnerTargetPayload {
+  productId: string;
+  partnerCategory: string;
+  name: string;
+  company?: string;
+  platform?: string;
+  website?: string;
+  email?: string;
+  phone?: string;
+  socialUrl?: string;
+  notes?: string;
+  status?: PartnerTargetStatus;
+}
+
+export const getTargets = (params?: {
+  productId?: string;
+  status?: string;
+  partnerCategory?: string;
+}): Promise<ApiPartnerTarget[]> => {
+  const qs = new URLSearchParams();
+  if (params?.productId) qs.set("productId", params.productId);
+  if (params?.status) qs.set("status", params.status);
+  if (params?.partnerCategory) qs.set("partnerCategory", params.partnerCategory);
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  return request<ApiPartnerTarget[]>(`/targets${query}`);
+};
+
+export const createTarget = (
+  payload: CreatePartnerTargetPayload,
+): Promise<ApiPartnerTarget> =>
+  request<ApiPartnerTarget>("/targets", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const updateTarget = (
+  id: string,
+  payload: Partial<CreatePartnerTargetPayload>,
+): Promise<ApiPartnerTarget> =>
+  request<ApiPartnerTarget>(`/targets/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+
+export const deleteTarget = (id: string): Promise<{ deleted: boolean; id: string }> =>
+  request<{ deleted: boolean; id: string }>(`/targets/${id}`, {
+    method: "DELETE",
   });
