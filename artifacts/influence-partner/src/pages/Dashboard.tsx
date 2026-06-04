@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAppContext } from "@/context/AppContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +20,10 @@ import {
   ArrowRight,
   BarChart2,
   Compass,
+  MessageSquare,
+  Clock,
+  Trash2,
+  ExternalLink,
 } from "lucide-react";
 import { ProductIntelligencePreview } from "@/components/ProductIntelligenceSummary";
 import {
@@ -32,11 +37,14 @@ import {
   estimateMonthlyRevenue,
   estimateMonthlyProfit,
   getOpportunityLevel,
-  getSponsorConflictLevel,
 } from "@/lib/scoring";
 import { generatePartnerIntelligence } from "@/lib/partnerIntelligence";
+import {
+  getSavedPlans,
+  deleteSavedPlan,
+  type SavedOutreachPlan,
+} from "@/lib/savedPlans";
 import { PipelineStage } from "@/types/influencePartner";
-import { TermWithHelp } from "@/components/HoverHelp";
 
 const STAGES: PipelineStage[] = ["New", "Contacted", "Interested", "Negotiating", "Active", "Rejected"];
 
@@ -64,9 +72,25 @@ const REVENUE_OPP_STYLE: Record<string, string> = {
   Low: "text-gray-600 font-semibold",
 };
 
+const TIER_BADGE: Record<number, string> = {
+  1: "bg-emerald-100 text-emerald-800 border-emerald-200",
+  2: "bg-blue-100 text-blue-800 border-blue-200",
+  3: "bg-amber-100 text-amber-800 border-amber-200",
+};
+
 export default function Dashboard() {
   const [, setLocation] = useLocation();
   const { creators, products, selectedProductId } = useAppContext();
+  const [savedPlans, setSavedPlans] = useState<SavedOutreachPlan[]>([]);
+
+  useEffect(() => {
+    setSavedPlans(getSavedPlans());
+  }, []);
+
+  const handleDeletePlan = (id: string) => {
+    deleteSavedPlan(id);
+    setSavedPlans(getSavedPlans());
+  };
 
   const creatorsByStage = (stage: PipelineStage) =>
     creators.filter((c) => c.pipelineStage === stage);
@@ -76,7 +100,6 @@ export default function Dashboard() {
   const interestedCreators = creatorsByStage("Interested");
   const topCreators = [...creators].sort((a, b) => b.fitScore - a.fitScore).slice(0, 5);
 
-  // Revenue projection from active partners
   const totalConversions = activeCreators.reduce((sum, c) => {
     return sum + estimateMonthlyConversions(c.followerCount, c.engagementRate);
   }, 0);
@@ -84,7 +107,6 @@ export default function Dashboard() {
   const estProfit = estimateMonthlyProfit(estRevenue, AVG_COMMISSION_PCT);
   const estPartnerPayout = estRevenue - estProfit;
 
-  // Campaign workflow progress
   const workflowProgress = [
     products.length > 0,
     creators.some((c) => c.pipelineStage !== "New"),
@@ -96,11 +118,9 @@ export default function Dashboard() {
   const currentStep = workflowProgress.findIndex((v) => !v);
   const progressPct = Math.round((completedSteps / 5) * 100);
 
-  // AI Recommendation logic
   const bestNewCreator = [...creators]
     .filter((c) => c.pipelineStage === "New" && c.fitScore >= 80)
     .sort((a, b) => b.fitScore - a.fitScore)[0];
-
   const bestContactedCreator = contactedCreators.sort((a, b) => b.fitScore - a.fitScore)[0];
 
   let recommendationCreator = bestNewCreator ?? bestContactedCreator;
@@ -108,22 +128,20 @@ export default function Dashboard() {
   let recommendationReason = "";
 
   if (bestNewCreator) {
-    const conflict = getSponsorConflictLevel(bestNewCreator.competitiveConflict);
     const opp = getOpportunityLevel(bestNewCreator.fitScore, bestNewCreator.competitiveConflict);
     recommendationAction = `Contact ${bestNewCreator.name} first`;
-    recommendationReason = `${bestNewCreator.fitLabel} with a ${bestNewCreator.fitScore} Fit Score, ${opp.toLowerCase()}, and ${conflict === "None" ? "no" : conflict.toLowerCase()} sponsor conflict. Their audience is an ideal match — reach out before a competitor does.`;
+    recommendationReason = `${bestNewCreator.fitLabel} with a ${bestNewCreator.fitScore} Fit Score and ${opp.toLowerCase()} signal. Their audience is an ideal match — reach out before a competitor does.`;
   } else if (bestContactedCreator) {
     recommendationAction = `Follow up with ${bestContactedCreator.name}`;
-    recommendationReason = `They've been contacted and have a ${bestContactedCreator.fitScore} Fit Score. A second touchpoint can move them to Interested — try sending a DM alongside your email.`;
+    recommendationReason = `They've been contacted and have a ${bestContactedCreator.fitScore} Fit Score. A second touchpoint can move them to Interested — try a DM alongside your email.`;
   } else if (activeCreators.length > 0) {
     recommendationAction = "Review your active partners' performance";
     recommendationReason = `You have ${activeCreators.length} active partner${activeCreators.length > 1 ? "s" : ""} driving conversions. Check in, offer support, and consider upping their commission to keep them motivated.`;
   } else {
     recommendationAction = "Add your first product to get started";
-    recommendationReason = "Without a product, creators have nothing to promote. Add one now and the system will score all 15 creators against it automatically.";
+    recommendationReason = "Without a product, creators have nothing to promote. Add one now and the system will score all creators against it automatically.";
   }
 
-  // Partner intelligence for active product
   const activeProduct =
     (selectedProductId ? products.find((p) => p.id === selectedProductId) : null) ??
     products[0] ??
@@ -150,9 +168,8 @@ export default function Dashboard() {
         </Button>
       </div>
 
-      {/* TOP ROW: Revenue + AI Recommendation */}
+      {/* Revenue + AI Recommendation */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Revenue Projection */}
         <Card className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border-primary/20 lg:col-span-1" data-testid="card-revenue-projection">
           <CardHeader className="pb-2 pt-5 px-5">
             <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
@@ -196,7 +213,6 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* AI Recommendation */}
         <Card className="border-amber-200 bg-amber-50/50 lg:col-span-2" data-testid="card-ai-recommendation">
           <CardHeader className="pb-2 pt-5 px-5">
             <CardTitle className="text-sm font-semibold uppercase tracking-wide text-amber-800 flex items-center gap-2">
@@ -323,6 +339,102 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
+      {/* Ready To Contact — saved outreach plans */}
+      {savedPlans.length > 0 && (
+        <Card className="border-emerald-200 bg-emerald-50/30" data-testid="card-ready-to-contact">
+          <CardHeader className="pb-3 pt-4 px-5">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold uppercase tracking-wide text-emerald-800 flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-emerald-600" />
+                Ready To Contact
+                <Badge className="text-xs bg-emerald-600 text-white ml-1">
+                  {savedPlans.length}
+                </Badge>
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-emerald-700 h-6 px-2"
+                onClick={() => setLocation("/partner-strategy")}
+              >
+                Add more →
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Outreach plans you've saved — click any card to open all 5 messages.
+            </p>
+          </CardHeader>
+          <CardContent className="px-5 pb-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {savedPlans.map((plan) => {
+                const planParams = new URLSearchParams({
+                  partnerType: plan.partnerType,
+                  commission: plan.commission,
+                  outreachAngle: plan.outreachAngle,
+                  tier: String(plan.tier),
+                  icon: plan.icon ?? "",
+                });
+                const savedDate = new Date(plan.savedAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                });
+                return (
+                  <div
+                    key={plan.id}
+                    className="flex flex-col gap-2 p-3 rounded-xl bg-background border border-emerald-200 hover:shadow-sm transition-shadow"
+                    data-testid={`card-saved-plan-${plan.id}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {plan.icon && <span className="text-lg leading-none flex-shrink-0">{plan.icon}</span>}
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm text-foreground leading-tight truncate">
+                            {plan.partnerType}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">{plan.productName}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleDeletePlan(plan.id)}
+                        className="text-muted-foreground/50 hover:text-red-500 flex-shrink-0 transition-colors"
+                        data-testid={`button-delete-plan-${plan.id}`}
+                        title="Remove saved plan"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge
+                        variant="outline"
+                        className={`text-xs border ${TIER_BADGE[plan.tier] ?? TIER_BADGE[1]}`}
+                      >
+                        Tier {plan.tier}
+                      </Badge>
+                      <span className="text-xs font-bold text-primary">{plan.commission}</span>
+                      <span className="text-xs text-muted-foreground flex items-center gap-0.5 ml-auto">
+                        <Clock className="w-3 h-3" />
+                        {savedDate}
+                      </span>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      className="w-full text-xs gap-1.5 mt-1"
+                      onClick={() => setLocation(`/partner-outreach?${planParams.toString()}`)}
+                      data-testid={`button-open-plan-${plan.id}`}
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Open 5 Messages
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Partner Discovery Intelligence */}
       {partnerIntel && activeProduct && (
         <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent" data-testid="card-partner-intelligence">
@@ -417,9 +529,8 @@ export default function Dashboard() {
         );
       })()}
 
-      {/* BOTTOM ROW: Top Opportunities + Pipeline Summary */}
+      {/* Top Opportunities + Pipeline Summary */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Top Opportunities */}
         <Card className="lg:col-span-2" data-testid="card-top-opportunities">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -450,11 +561,9 @@ export default function Dashboard() {
                   />
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-sm text-foreground truncate">{creator.name}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <p className="text-muted-foreground text-xs">
-                        {creator.niche} · {formatFollowers(creator.followerCount)} followers
-                      </p>
-                    </div>
+                    <p className="text-muted-foreground text-xs">
+                      {creator.niche} · {formatFollowers(creator.followerCount)} followers
+                    </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${oppColor}`}>
@@ -493,7 +602,6 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Pipeline Summary */}
         <Card className="lg:col-span-1" data-testid="card-pipeline-summary">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">

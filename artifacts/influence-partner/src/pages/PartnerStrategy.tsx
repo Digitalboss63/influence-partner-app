@@ -13,7 +13,6 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
   Compass,
-  ArrowLeft,
   Users,
   TrendingUp,
   Zap,
@@ -23,6 +22,7 @@ import {
   Package,
   Lightbulb,
   Info,
+  MessageSquare,
 } from "lucide-react";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -94,7 +94,13 @@ function ScoreBar({ label, score, icon: Icon }: { label: string; score: number; 
   );
 }
 
-function PartnerCategoryCard({ cat }: { cat: PartnerCategory }) {
+function PartnerCategoryCard({
+  cat,
+  onCreatePlan,
+}: {
+  cat: PartnerCategory;
+  onCreatePlan: () => void;
+}) {
   const tier = TIER_STYLES[cat.tier];
   return (
     <Card
@@ -153,6 +159,17 @@ function PartnerCategoryCard({ cat }: { cat: PartnerCategory }) {
           </p>
           <p className="text-xs text-foreground leading-relaxed italic">"{cat.outreachAngle}"</p>
         </div>
+
+        {/* Create Outreach Plan button */}
+        <Button
+          size="sm"
+          className="w-full mt-auto gap-1.5 text-xs"
+          onClick={onCreatePlan}
+          data-testid={`button-create-plan-${cat.id}`}
+        >
+          <MessageSquare className="w-3.5 h-3.5" />
+          Create Outreach Plan
+        </Button>
       </CardContent>
     </Card>
   );
@@ -223,6 +240,17 @@ export default function PartnerStrategy() {
   const tier2 = intel.partnerCategories.filter((c) => c.tier === 2);
   const tier3 = intel.partnerCategories.filter((c) => c.tier === 3);
 
+  function buildPlanUrl(cat: PartnerCategory) {
+    const params = new URLSearchParams({
+      partnerType: cat.name,
+      commission: cat.recommendedCommission,
+      outreachAngle: cat.outreachAngle,
+      tier: String(cat.tier),
+      icon: cat.icon,
+    });
+    return `/partner-outreach?${params.toString()}`;
+  }
+
   return (
     <div className="p-6 space-y-8 max-w-7xl mx-auto">
 
@@ -291,9 +319,9 @@ export default function PartnerStrategy() {
       <div className="flex items-start gap-3 p-4 rounded-xl bg-sky-50 border border-sky-200 text-sm">
         <Info className="w-4 h-4 text-sky-600 flex-shrink-0 mt-0.5" />
         <div className="text-sky-800 leading-relaxed">
-          <span className="font-semibold">How to read this page: </span>
+          <span className="font-semibold">How to use this page: </span>
           Tier 1 partners are your <strong>highest-priority targets</strong> — they have the best audience fit and the shortest path to conversion.
-          Start with 3–5 Tier 1 contacts before moving to Tier 2. Every recommendation includes the exact outreach angle to use.
+          Start with 3–5 Tier 1 contacts before moving to Tier 2. Click <strong>"Create Outreach Plan"</strong> on any card to get 5 ready-to-send messages for that partner type.
         </div>
       </div>
 
@@ -316,7 +344,13 @@ export default function PartnerStrategy() {
             <span className="text-xs text-muted-foreground">Start here. Highest ROI per outreach hour.</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {tier1.map((cat) => <PartnerCategoryCard key={cat.id} cat={cat} />)}
+            {tier1.map((cat) => (
+              <PartnerCategoryCard
+                key={cat.id}
+                cat={cat}
+                onCreatePlan={() => setLocation(buildPlanUrl(cat))}
+              />
+            ))}
           </div>
         </div>
 
@@ -330,7 +364,13 @@ export default function PartnerStrategy() {
               <span className="text-xs text-muted-foreground">Scale here once Tier 1 pipeline is running.</span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {tier2.map((cat) => <PartnerCategoryCard key={cat.id} cat={cat} />)}
+              {tier2.map((cat) => (
+                <PartnerCategoryCard
+                  key={cat.id}
+                  cat={cat}
+                  onCreatePlan={() => setLocation(buildPlanUrl(cat))}
+                />
+              ))}
             </div>
           </div>
         )}
@@ -345,7 +385,13 @@ export default function PartnerStrategy() {
               <span className="text-xs text-muted-foreground">Low effort, long-tail discovery channels.</span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {tier3.map((cat) => <PartnerCategoryCard key={cat.id} cat={cat} />)}
+              {tier3.map((cat) => (
+                <PartnerCategoryCard
+                  key={cat.id}
+                  cat={cat}
+                  onCreatePlan={() => setLocation(buildPlanUrl(cat))}
+                />
+              ))}
             </div>
           </div>
         )}
@@ -484,9 +530,9 @@ export default function PartnerStrategy() {
       <Card className="bg-primary/5 border-primary/20">
         <CardContent className="p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div>
-            <p className="font-bold text-foreground">Ready to find your Tier 1 partners?</p>
+            <p className="font-bold text-foreground">Ready to start outreach?</p>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Browse the 15 pre-scored creators and filter by the partner categories identified above.
+              Click "Create Outreach Plan" on any partner category above to get 5 personalised messages — or browse pre-scored creators.
             </p>
           </div>
           <div className="flex gap-3 flex-shrink-0">
@@ -502,7 +548,7 @@ export default function PartnerStrategy() {
               onClick={() => setLocation("/outreach")}
               data-testid="button-generate-outreach-strategy"
             >
-              Generate Outreach
+              Creator Outreach
             </Button>
           </div>
         </CardContent>
