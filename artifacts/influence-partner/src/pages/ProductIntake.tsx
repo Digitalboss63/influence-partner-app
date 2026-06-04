@@ -92,17 +92,17 @@ export default function ProductIntake() {
   const onAnalyze = async (data: ProductFormValues) => {
     setAnalyzing(true);
     await new Promise((res) => setTimeout(res, 1600));
-    setAnalyzing(false);
 
     const intel = generateProductIntelligence(data as ProductForm);
-    const newProduct: Product = {
-      id: `p${Date.now()}`,
+    const draft: Product = {
+      id: "",
       ...data,
       ...intel,
     };
-    addProduct(newProduct);
-    setSelectedProductId(newProduct.id);
-    setAnalysisProduct(newProduct);
+    const saved = await addProduct(draft);
+    setAnalyzing(false);
+    setSelectedProductId(saved.id);
+    setAnalysisProduct(saved);
     setShowForm(false);
   };
 
