@@ -30,9 +30,9 @@ import {
 // ─── Query param helper ───────────────────────────────────────────────────────
 
 function useQueryParam(key: string): string {
-  const [location] = useLocation();
-  const search = location.split("?")[1] ?? "";
-  return new URLSearchParams(search).get(key) ?? "";
+  // useLocation() in Wouter v3 returns only the pathname (no search string).
+  // Reading window.location.search directly is the reliable cross-version approach.
+  return new URLSearchParams(window.location.search).get(key) ?? "";
 }
 
 // ─── Message tab config ───────────────────────────────────────────────────────
