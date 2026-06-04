@@ -18,6 +18,7 @@ import {
   Target,
   ArrowRight,
   BarChart2,
+  Compass,
 } from "lucide-react";
 import { ProductIntelligencePreview } from "@/components/ProductIntelligenceSummary";
 import {
@@ -33,6 +34,7 @@ import {
   getOpportunityLevel,
   getSponsorConflictLevel,
 } from "@/lib/scoring";
+import { generatePartnerIntelligence } from "@/lib/partnerIntelligence";
 import { PipelineStage } from "@/types/influencePartner";
 import { TermWithHelp } from "@/components/HoverHelp";
 
@@ -48,6 +50,19 @@ const WORKFLOW_STEPS = [
 
 const AVG_PRICE_USD = 97;
 const AVG_COMMISSION_PCT = 37.5;
+
+const DIFFICULTY_STYLE: Record<string, string> = {
+  Easy: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  Medium: "bg-amber-50 text-amber-700 border-amber-200",
+  Hard: "bg-red-50 text-red-700 border-red-200",
+};
+
+const REVENUE_OPP_STYLE: Record<string, string> = {
+  Exceptional: "text-emerald-700 font-bold",
+  High: "text-blue-700 font-bold",
+  Moderate: "text-amber-700 font-semibold",
+  Low: "text-gray-600 font-semibold",
+};
 
 export default function Dashboard() {
   const [, setLocation] = useLocation();
@@ -107,6 +122,13 @@ export default function Dashboard() {
     recommendationAction = "Add your first product to get started";
     recommendationReason = "Without a product, creators have nothing to promote. Add one now and the system will score all 15 creators against it automatically.";
   }
+
+  // Partner intelligence for active product
+  const activeProduct =
+    (selectedProductId ? products.find((p) => p.id === selectedProductId) : null) ??
+    products[0] ??
+    null;
+  const partnerIntel = activeProduct ? generatePartnerIntelligence(activeProduct) : null;
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
@@ -301,17 +323,82 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
+      {/* Partner Discovery Intelligence */}
+      {partnerIntel && activeProduct && (
+        <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent" data-testid="card-partner-intelligence">
+          <CardHeader className="pb-2 pt-4 px-5">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+                <Compass className="w-4 h-4 text-primary" />
+                Partner Discovery Intelligence — {activeProduct.name}
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-primary h-6 px-2"
+                onClick={() => setLocation("/partner-strategy")}
+                data-testid="button-view-partner-strategy"
+              >
+                View Full Strategy →
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="px-5 pb-5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+              <div className="rounded-xl bg-background border border-border p-3">
+                <p className="text-xs text-muted-foreground mb-1">Top Partner Type</p>
+                <p className="font-bold text-sm text-foreground leading-tight">{partnerIntel.topPartnerCategory}</p>
+              </div>
+              <div className="rounded-xl bg-background border border-border p-3">
+                <p className="text-xs text-muted-foreground mb-1">Recommended Commission</p>
+                <p className="font-bold text-sm text-primary">{partnerIntel.recommendedCommission}</p>
+              </div>
+              <div className="rounded-xl bg-background border border-border p-3">
+                <p className="text-xs text-muted-foreground mb-1">Acquisition</p>
+                <Badge
+                  variant="outline"
+                  className={`text-xs border ${DIFFICULTY_STYLE[partnerIntel.estimatedAcquisitionDifficulty]}`}
+                >
+                  {partnerIntel.estimatedAcquisitionDifficulty}
+                </Badge>
+              </div>
+              <div className="rounded-xl bg-background border border-border p-3">
+                <p className="text-xs text-muted-foreground mb-1">Revenue Opportunity</p>
+                <p className={`text-sm ${REVENUE_OPP_STYLE[partnerIntel.estimatedRevenueOpportunity]}`}>
+                  {partnerIntel.estimatedRevenueOpportunity}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start justify-between gap-4 p-3 rounded-xl bg-background border border-border">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Best Audience Type</p>
+                <p className="text-sm text-foreground leading-relaxed">{partnerIntel.bestAudienceType}</p>
+              </div>
+              <Button
+                size="sm"
+                className="flex-shrink-0 text-xs gap-1.5"
+                onClick={() => setLocation("/partner-strategy")}
+                data-testid="button-view-recommended-partners"
+              >
+                <Users className="w-3.5 h-3.5" />
+                View Recommended Partners
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Product Intelligence Preview */}
       {products.length > 0 && (() => {
-        const activeProduct = products.find((p) => p.id === selectedProductId) ?? products[0];
-        if (!activeProduct?.mainMarket) return null;
+        const prod = products.find((p) => p.id === selectedProductId) ?? products[0];
+        if (!prod?.mainMarket) return null;
         return (
           <Card data-testid="card-product-intel-preview">
             <CardHeader className="pb-2 pt-4 px-5">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
                   <BarChart2 className="w-4 h-4 text-primary" />
-                  Product Intelligence — {activeProduct.name}
+                  Product Intelligence — {prod.name}
                 </CardTitle>
                 <Button
                   variant="ghost"
@@ -324,7 +411,7 @@ export default function Dashboard() {
               </div>
             </CardHeader>
             <CardContent className="px-5 pb-4">
-              <ProductIntelligencePreview product={activeProduct} />
+              <ProductIntelligencePreview product={prod} />
             </CardContent>
           </Card>
         );

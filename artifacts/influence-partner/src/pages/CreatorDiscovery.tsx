@@ -33,6 +33,11 @@ import {
   getSponsorConflictLevel,
   getProductGapLevel,
 } from "@/lib/scoring";
+import {
+  NICHE_TO_PARTNER_BUCKET,
+  ALL_PARTNER_BUCKETS,
+  type PartnerBucket,
+} from "@/lib/partnerIntelligence";
 import { TermWithHelp } from "@/components/HoverHelp";
 
 const PLATFORMS: Platform[] = ["YouTube", "Instagram", "TikTok"];
@@ -65,6 +70,7 @@ export default function CreatorDiscovery() {
   const [followerRange, setFollowerRange] = useState("All");
   const [fitRange, setFitRange] = useState("All");
   const [creatorTypeFilter, setCreatorTypeFilter] = useState<CreatorType | "All">("All");
+  const [bucketFilter, setBucketFilter] = useState<PartnerBucket | "All">("All");
 
   const allNiches = useMemo(() => {
     const niches = [...new Set(creators.map((c) => c.niche))].sort();
@@ -82,15 +88,28 @@ export default function CreatorDiscovery() {
       if (c.followerCount < fr.min || c.followerCount >= (fr.max ?? Infinity)) return false;
       if (c.fitScore < fit.min) return false;
       if (fit.max !== undefined && c.fitScore >= fit.max) return false;
+      if (bucketFilter !== "All") {
+        const buckets = NICHE_TO_PARTNER_BUCKET[c.niche] ?? [];
+        if (!buckets.includes(bucketFilter)) return false;
+      }
       return true;
     });
-  }, [creators, platformFilter, nicheFilter, followerRange, fitRange, creatorTypeFilter]);
+  }, [creators, platformFilter, nicheFilter, followerRange, fitRange, creatorTypeFilter, bucketFilter]);
 
   const strongCount = filtered.filter((c) => c.fitScore >= 90).length;
 
+  const resetFilters = () => {
+    setPlatformFilter("All");
+    setNicheFilter("All");
+    setFollowerRange("All");
+    setFitRange("All");
+    setCreatorTypeFilter("All");
+    setBucketFilter("All");
+  };
+
   return (
     <div className="p-6 space-y-5 max-w-7xl mx-auto">
-      {/* Page header + guide banner */}
+      {/* Page header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">Discover Creators</h1>
         <p className="text-muted-foreground text-sm mt-1">
@@ -106,6 +125,14 @@ export default function CreatorDiscovery() {
           Every creator has been pre-scored against your product. Focus on creators with a{" "}
           <strong>Fit Score 80+</strong> and a <strong>Strong Opportunity</strong> rating — those are your best bets for a
           high-commission deal. Click <em>View Details</em> to see the full analysis and recommended outreach angle.
+          Use <strong>Partner Category</strong> to filter by the partner types recommended on your{" "}
+          <button
+            className="underline font-semibold cursor-pointer"
+            onClick={() => setLocation("/partner-strategy")}
+          >
+            Partner Strategy
+          </button>{" "}
+          page.
         </div>
       </div>
 
@@ -178,6 +205,21 @@ export default function CreatorDiscovery() {
             ))}
           </SelectContent>
         </Select>
+
+        <Select
+          value={bucketFilter}
+          onValueChange={(v) => setBucketFilter(v as PartnerBucket | "All")}
+        >
+          <SelectTrigger className="w-52 h-8 text-xs" data-testid="filter-partner-category">
+            <SelectValue placeholder="Partner Category" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="All">All Partner Categories</SelectItem>
+            {ALL_PARTNER_BUCKETS.map((b) => (
+              <SelectItem key={b} value={b}>{b}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Creator Grid */}
@@ -186,17 +228,7 @@ export default function CreatorDiscovery() {
           <Telescope className="w-12 h-12 text-muted-foreground/40 mx-auto mb-4" />
           <p className="text-muted-foreground font-medium">No creators match your filters</p>
           <p className="text-sm text-muted-foreground/70 mt-1">Try broadening your search criteria</p>
-          <Button
-            variant="ghost"
-            className="mt-3"
-            onClick={() => {
-              setPlatformFilter("All");
-              setNicheFilter("All");
-              setFollowerRange("All");
-              setFitRange("All");
-              setCreatorTypeFilter("All");
-            }}
-          >
+          <Button variant="ghost" className="mt-3" onClick={resetFilters}>
             Clear all filters
           </Button>
         </div>
@@ -233,13 +265,17 @@ function CreatorCard({
   const productGap = getProductGapLevel(creator.productFit);
   const avgInteractions = Math.round((creator.followerCount * creator.engagementRate) / 100);
 
+  // Partner category bucket for this creator
+  const buckets = NICHE_TO_PARTNER_BUCKET[creator.niche] ?? [];
+  const primaryBucket = buckets[0] ?? null;
+
   return (
     <Card
       className="flex flex-col hover:shadow-md transition-shadow"
       data-testid={`card-creator-${creator.id}`}
     >
       <CardContent className="p-4 flex flex-col gap-0 flex-1">
-        {/* Header: avatar + name + FIT SCORE (big and prominent) */}
+        {/* Header: avatar + name + FIT SCORE */}
         <div className="flex items-start gap-3 mb-3">
           <img
             src={creator.avatarUrl}
@@ -256,6 +292,11 @@ function CreatorCard({
               <Badge variant="outline" className="text-xs text-muted-foreground">
                 {creator.creatorType}
               </Badge>
+              {primaryBucket && (
+                <Badge variant="outline" className="text-xs text-violet-700 border-violet-200 bg-violet-50">
+                  {primaryBucket}
+                </Badge>
+              )}
             </div>
           </div>
           {/* FIT SCORE — most prominent element */}
@@ -265,7 +306,7 @@ function CreatorCard({
           </div>
         </div>
 
-        {/* Key deal info — 3 big visible items */}
+        {/* Key deal info */}
         <div className="grid grid-cols-3 gap-2 mb-3">
           <div className="text-center rounded-lg bg-primary/8 border border-primary/15 px-2 py-2">
             <p className="text-xs text-muted-foreground mb-0.5">
@@ -291,7 +332,6 @@ function CreatorCard({
             <TermWithHelp term="Opportunity Score" />
           </p>
           <div className="flex flex-col gap-1.5">
-            {/* Opportunity Level badge */}
             <Badge
               variant="outline"
               className={`text-xs font-semibold border self-start px-2 py-0.5 ${getOpportunityColor(opportunityLevel)}`}
@@ -299,7 +339,6 @@ function CreatorCard({
             >
               {opportunityLevel}
             </Badge>
-            {/* Sponsor Conflict + Product Gap */}
             <div className="flex gap-4 text-xs">
               <div className="flex items-center gap-1">
                 <span className="text-muted-foreground">
