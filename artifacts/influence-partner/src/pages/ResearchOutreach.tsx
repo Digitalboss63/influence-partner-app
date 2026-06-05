@@ -24,6 +24,14 @@ import {
   Globe,
   Link2,
   RefreshCw,
+  ShieldCheck,
+  Phone,
+  Star,
+  AlertTriangle,
+  Brain,
+  TrendingUp,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,15 +53,27 @@ import {
   getTargets,
   updateTarget,
   createOutreachOperation,
+  getQualificationQueue,
+  getContactIntelligence,
+  getOutreachOperations,
   type ApiPartnerTarget,
+  type ApiQueueItem,
+  type ApiContactIntelligence,
   type OutreachContactMethod,
 } from "@/lib/api-client";
 import {
+  generateIntelligenceOutreachMessages,
   generateResearchOutreachMessages,
+  computeResearchUtilizationScore,
   computePersonalisationScore,
   type OutreachPlanMessages,
+  type OutreachIntelligenceContext,
   type ResearchContext,
+  type ResearchUtilizationScore,
+  type QualityCheckItem,
 } from "@/lib/partnerOutreach";
+import { generateProductIntelligence } from "@/lib/productIntelligence";
+import { generatePartnerIntelligence } from "@/lib/partnerIntelligence";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -125,11 +145,184 @@ const SCORE_COLORS = (score: number) => {
 };
 
 const SCORE_LABEL = (score: number) => {
-  if (score >= 80) return "High personalisation";
-  if (score >= 50) return "Moderate — add more research";
-  if (score >= 20) return "Basic — add target data";
-  return "No personalisation yet";
+  if (score >= 80) return "Rich intelligence";
+  if (score >= 50) return "Moderate — add more sources";
+  if (score >= 20) return "Basic — run qualification";
+  return "No intelligence yet";
 };
+
+// ─── Intelligence source status ───────────────────────────────────────────────
+
+type IntelStatus = "loaded" | "partial" | "missing" | "loading";
+
+interface IntelSource {
+  label: string;
+  status: IntelStatus;
+  summary: string | null;
+  link?: string;
+  linkLabel?: string;
+}
+
+function IntelSourceBadge({ status }: { status: IntelStatus }) {
+  if (status === "loading") return <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />;
+  if (status === "loaded") return <CheckCircle2 className="w-3 h-3 text-emerald-600" />;
+  if (status === "partial") return <AlertTriangle className="w-3 h-3 text-amber-500" />;
+  return <div className="w-3 h-3 rounded-full border-2 border-muted-foreground/30" />;
+}
+
+function IntelPanel({
+  sources,
+  isExpanded,
+  onToggle,
+}: {
+  sources: IntelSource[];
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  const loaded = sources.filter((s) => s.status === "loaded").length;
+  const partial = sources.filter((s) => s.status === "partial").length;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <button
+          className="flex items-center justify-between w-full text-left"
+          onClick={onToggle}
+        >
+          <CardTitle className="text-sm flex items-center gap-1.5">
+            <Brain className="w-4 h-4 text-violet-600" />
+            Intelligence Sources
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              {loaded + partial}/{sources.length} loaded
+            </span>
+            {isExpanded ? (
+              <ChevronDown className="w-4 h-4 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            )}
+          </div>
+        </button>
+      </CardHeader>
+      {isExpanded && (
+        <CardContent className="space-y-2 pt-0">
+          {sources.map((src) => (
+            <div
+              key={src.label}
+              className={`rounded-lg border p-2.5 ${
+                src.status === "loaded"
+                  ? "border-emerald-200 bg-emerald-50/50"
+                  : src.status === "partial"
+                  ? "border-amber-200 bg-amber-50/50"
+                  : "border-muted bg-muted/20"
+              }`}
+            >
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <IntelSourceBadge status={src.status} />
+                <span className="text-xs font-medium">{src.label}</span>
+              </div>
+              {src.summary ? (
+                <p className="text-xs text-muted-foreground leading-snug pl-4.5">
+                  {src.summary}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground/60 italic leading-snug pl-4">
+                  {src.status === "loading" ? "Loading…" : "Not found — "}
+                  {src.status === "missing" && src.link && (
+                    <Link href={src.link}>
+                      <span className="text-primary not-italic hover:underline cursor-pointer">
+                        {src.linkLabel ?? "Go there →"}
+                      </span>
+                    </Link>
+                  )}
+                </p>
+              )}
+            </div>
+          ))}
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
+// ─── Research Utilization Score card ─────────────────────────────────────────
+
+function UtilizationScoreCard({
+  scoreData,
+  selectedTarget,
+  selectedProduct,
+}: {
+  scoreData: ResearchUtilizationScore;
+  selectedTarget: ApiPartnerTarget | null;
+  selectedProduct: { name: string } | null;
+}) {
+  const { total, productContext, creatorContext, qualificationContext, contactContext, strategyContext, checklist } =
+    scoreData;
+
+  const bars: { label: string; value: number; color: string }[] = [
+    { label: "Product", value: productContext, color: "bg-blue-500" },
+    { label: "Creator", value: creatorContext, color: "bg-violet-500" },
+    { label: "Qualification", value: qualificationContext, color: "bg-emerald-500" },
+    { label: "Contact", value: contactContext, color: "bg-amber-500" },
+    { label: "Strategy", value: strategyContext, color: "bg-rose-500" },
+  ];
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-1.5">
+          <BarChart2 className="w-4 h-4 text-muted-foreground" />
+          Research Utilization Score
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex items-center justify-between">
+          <span className={`text-2xl font-bold ${SCORE_COLORS(total)}`}>{total}%</span>
+          <span className={`text-xs font-medium ${SCORE_COLORS(total)}`}>{SCORE_LABEL(total)}</span>
+        </div>
+        <Progress value={total} className="h-2" />
+
+        {/* Per-source breakdown */}
+        <div className="space-y-1.5">
+          {bars.map((bar) => (
+            <div key={bar.label} className="flex items-center gap-2">
+              <span className="text-[10px] text-muted-foreground w-20 shrink-0">{bar.label}</span>
+              <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${bar.color}`}
+                  style={{ width: `${(bar.value / 20) * 100}%` }}
+                />
+              </div>
+              <span className="text-[10px] text-muted-foreground w-8 text-right">{bar.value}/20</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Quality checklist */}
+        <div className="border-t pt-2 mt-1">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5 font-medium">
+            Quality Checklist
+          </p>
+          <ul className="space-y-1">
+            {checklist.map((item) => (
+              <li key={item.label} className="flex items-center gap-1.5 text-xs">
+                {item.done ? (
+                  <Check className="w-3 h-3 text-emerald-600 flex-shrink-0" />
+                ) : (
+                  <div className="w-3 h-3 rounded-full border-2 border-muted-foreground/30 flex-shrink-0" />
+                )}
+                <span className={item.done ? "text-foreground" : "text-muted-foreground"}>
+                  {item.label}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 // ─── Inline field editor ──────────────────────────────────────────────────────
 
@@ -261,7 +454,6 @@ export default function ResearchOutreach() {
     queryFn: () => getTargets(),
   });
 
-  // Target selection state
   const [selectedTargetId, setSelectedTargetId] = useState(targetIdParam);
   const [selectedProdId, setSelectedProdId] = useState(
     productIdParam || selectedProductId || (products[0]?.id ?? ""),
@@ -274,14 +466,84 @@ export default function ResearchOutreach() {
   const selectedTarget = allTargets.find((t) => t.id === selectedTargetId) ?? null;
   const selectedProduct = products.find((p) => p.id === selectedProdId) ?? products[0] ?? null;
 
-  // Research fields (local state, mirrors target record, saveable)
+  // ── Intelligence queries ──────────────────────────────────────────────────────
+
+  const { data: queueItems = [], isLoading: loadingQueue } = useQuery({
+    queryKey: ["qualification-queue", selectedProdId],
+    queryFn: () => getQualificationQueue(selectedProdId),
+    enabled: !!selectedProdId,
+  });
+
+  const { data: contactItems = [], isLoading: loadingContacts } = useQuery({
+    queryKey: ["contact-intelligence", selectedProdId],
+    queryFn: () => getContactIntelligence({ productId: selectedProdId }),
+    enabled: !!selectedProdId,
+  });
+
+  const { data: allOps = [], isLoading: loadingOps } = useQuery({
+    queryKey: ["outreach-operations-all", selectedProdId],
+    queryFn: () => getOutreachOperations({ productId: selectedProdId }),
+    enabled: !!selectedProdId,
+  });
+
+  // ── Match intelligence to selected target ─────────────────────────────────
+
+  const matchedQueueItem = useMemo((): ApiQueueItem | null => {
+    if (!selectedTarget || queueItems.length === 0) return null;
+    const tName = selectedTarget.name.toLowerCase().trim();
+    const firstName = tName.split(/\s+/)[0];
+    return (
+      queueItems.find(
+        (item) =>
+          item.prospect.name.toLowerCase().trim() === tName ||
+          (firstName.length >= 3 && item.prospect.name.toLowerCase().includes(firstName)),
+      ) ?? null
+    );
+  }, [selectedTarget, queueItems]);
+
+  const qualification = matchedQueueItem?.qualification ?? null;
+
+  const contactIntel = useMemo((): ApiContactIntelligence | null => {
+    if (!matchedQueueItem || contactItems.length === 0) return null;
+    return (
+      contactItems.find((c) => c.prospectId === matchedQueueItem.prospect.id) ??
+      null
+    );
+  }, [matchedQueueItem, contactItems]);
+
+  const targetOutreachOps = useMemo(() => {
+    if (!selectedTarget || allOps.length === 0) return [];
+    return allOps.filter((op) => op.targetId === selectedTarget.id);
+  }, [selectedTarget, allOps]);
+
+  // ── Product + partner intelligence (deterministic, client-side) ────────────
+
+  const productIntel = useMemo(() => {
+    if (!selectedProduct) return null;
+    try {
+      return generateProductIntelligence(selectedProduct);
+    } catch {
+      return null;
+    }
+  }, [selectedProduct]);
+
+  const partnerStrategy = useMemo(() => {
+    if (!selectedProduct) return null;
+    try {
+      return generatePartnerIntelligence(selectedProduct);
+    } catch {
+      return null;
+    }
+  }, [selectedProduct]);
+
+  // ── Research fields (local state, mirrors target record, saveable) ─────────
+
   const [researchDraft, setResearchDraft] = useState({
     audienceSize: "",
     contentAngle: "",
     notes: "",
   });
 
-  // Sync research draft from selected target
   useEffect(() => {
     if (selectedTarget) {
       setResearchDraft({
@@ -320,7 +582,191 @@ export default function ResearchOutreach() {
     },
   });
 
-  // Generate messages
+  // ── Build full OutreachIntelligenceContext ────────────────────────────────
+
+  const intelContext = useMemo((): OutreachIntelligenceContext | null => {
+    if (!selectedTarget || !selectedProduct) return null;
+
+    // Collect all qualification reasons into a flat array
+    const qualReasons: string[] = [];
+    if (qualification?.scoreReasons) {
+      const sr = qualification.scoreReasons;
+      [sr.audienceMatch, sr.contentRelevance, sr.partnershipReadiness].forEach((arr) => {
+        if (arr) qualReasons.push(...arr);
+      });
+    }
+
+    // Find the matching partner category from strategy
+    const strategyCategory = partnerStrategy?.partnerCategories?.find(
+      (c) =>
+        selectedTarget.partnerCategory.toLowerCase().includes(c.name.toLowerCase()) ||
+        c.name.toLowerCase().includes(selectedTarget.partnerCategory.toLowerCase()),
+    );
+
+    // Derive preferred contact method from contact intel
+    let preferredContactMethod: string | null = null;
+    if (contactIntel) {
+      if (contactIntel.businessEmail) preferredContactMethod = "Email";
+      else if (contactIntel.instagramUrl) preferredContactMethod = "Instagram DM";
+      else if (contactIntel.linkedinUrl) preferredContactMethod = "LinkedIn";
+      else if (contactIntel.tiktokUrl) preferredContactMethod = "TikTok DM";
+      else if (contactIntel.contactPageUrl) preferredContactMethod = "Website Contact Form";
+    }
+
+    // Outreach history
+    const priorStatuses = targetOutreachOps.map((op) => op.outreachStatus);
+    const lastOp = targetOutreachOps.sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    )[0];
+
+    return {
+      targetName: selectedTarget.name,
+      company: selectedTarget.company,
+      platform: selectedTarget.platform,
+      partnerCategory: selectedTarget.partnerCategory,
+      website: selectedTarget.website,
+      socialUrl: selectedTarget.socialUrl,
+      audienceSize: researchDraft.audienceSize || selectedTarget.audienceSize || null,
+      contentAngle: researchDraft.contentAngle || selectedTarget.contentAngle || null,
+      notes: researchDraft.notes || selectedTarget.notes || null,
+      productName: selectedProduct.name,
+      productCategory: selectedProduct.category,
+      productSummary: `${selectedProduct.targetCustomer} — ${selectedProduct.mainBenefit}`,
+      productBenefits: selectedProduct.mainBenefit,
+      productMarket: productIntel?.mainMarket ?? null,
+      productOutreachAngle: productIntel?.outreachAngle ?? null,
+      partnerStrategySummary: partnerStrategy
+        ? `${partnerStrategy.topPartnerCategory} · ${partnerStrategy.estimatedRevenueOpportunity} revenue opportunity`
+        : null,
+      recommendedDealType:
+        partnerStrategy?.dealStructures?.find((d) => d.isBest)?.type ?? null,
+      strategyOutreachAngle: strategyCategory?.outreachAngle ?? productIntel?.suggestedOutreachAngle ?? null,
+      partnerFitScore: qualification?.partnerFitScore ?? null,
+      qualificationLabel: qualification?.qualificationLabel ?? null,
+      qualificationReasons: qualReasons.length > 0 ? qualReasons : null,
+      hardFlags: qualification?.hardFlags ?? null,
+      nextBestAction: qualification?.nextBestAction ?? null,
+      contactReadinessScore: contactIntel?.contactReadinessScore ?? null,
+      preferredContactMethod,
+      businessEmail: contactIntel?.businessEmail ?? null,
+      priorOutreachCount: targetOutreachOps.length,
+      priorOutreachStatuses: priorStatuses,
+      lastOutreachDate: lastOp?.createdAt ?? null,
+      latestVideoTitle: matchedQueueItem?.prospect.notes?.match(/latest.*?:\s*(.+?)(?:\n|$)/i)?.[1] ?? null,
+      latestVideoDate: null,
+    };
+  }, [
+    selectedTarget,
+    selectedProduct,
+    qualification,
+    contactIntel,
+    partnerStrategy,
+    productIntel,
+    researchDraft,
+    targetOutreachOps,
+    matchedQueueItem,
+  ]);
+
+  // ── Intelligence sources panel data ───────────────────────────────────────
+
+  const [intelPanelExpanded, setIntelPanelExpanded] = useState(true);
+
+  const intelSources = useMemo((): IntelSource[] => {
+    const hasTarget = !!selectedTarget;
+    const hasProduct = !!selectedProduct;
+
+    return [
+      {
+        label: "Product Intelligence",
+        status: productIntel ? "loaded" : hasProduct ? "partial" : "missing",
+        summary: productIntel
+          ? `${productIntel.mainMarket} · ${productIntel.campaignOpportunityRating} opportunity · ${productIntel.marketDifficulty} difficulty`
+          : null,
+        link: "/product-intake",
+        linkLabel: "Add a product →",
+      },
+      {
+        label: "Partner Strategy",
+        status: partnerStrategy ? "loaded" : hasProduct ? "partial" : "missing",
+        summary: partnerStrategy
+          ? `Top category: ${partnerStrategy.topPartnerCategory} · ${partnerStrategy.estimatedRevenueOpportunity} revenue · ${partnerStrategy.estimatedAcquisitionDifficulty} acquisition`
+          : null,
+        link: "/partner-strategy",
+        linkLabel: "View partner strategy →",
+      },
+      {
+        label: "Qualification Engine",
+        status: loadingQueue
+          ? "loading"
+          : qualification
+          ? "loaded"
+          : hasTarget
+          ? "missing"
+          : "missing",
+        summary: qualification
+          ? `${qualification.qualificationLabel} · Fit score: ${qualification.partnerFitScore}/100 · ${qualification.qualificationStatus}`
+          : null,
+        link: "/qualification",
+        linkLabel: "Run qualification →",
+      },
+      {
+        label: "Contact Intelligence",
+        status: loadingContacts
+          ? "loading"
+          : contactIntel
+          ? contactIntel.businessEmail
+            ? "loaded"
+            : "partial"
+          : hasTarget
+          ? "missing"
+          : "missing",
+        summary: contactIntel
+          ? [
+              contactIntel.businessEmail && `Email: ${contactIntel.businessEmail}`,
+              contactIntel.contactReadinessScore != null &&
+                `Readiness: ${contactIntel.contactReadinessScore}/100`,
+              contactIntel.verificationStatus && `Status: ${contactIntel.verificationStatus}`,
+            ]
+              .filter(Boolean)
+              .join(" · ")
+          : null,
+        link: "/contact-intelligence",
+        linkLabel: "Discover contact intel →",
+      },
+      {
+        label: "Outreach History",
+        status: loadingOps
+          ? "loading"
+          : targetOutreachOps.length > 0
+          ? "loaded"
+          : "missing",
+        summary:
+          targetOutreachOps.length > 0
+            ? `${targetOutreachOps.length} prior message${targetOutreachOps.length !== 1 ? "s" : ""} · Latest: ${targetOutreachOps[0]?.outreachStatus ?? "unknown"}`
+            : null,
+        link: "/outreach-operations",
+        linkLabel: "View outreach ops →",
+      },
+    ];
+  }, [
+    selectedTarget,
+    selectedProduct,
+    productIntel,
+    partnerStrategy,
+    qualification,
+    contactIntel,
+    targetOutreachOps,
+    loadingQueue,
+    loadingContacts,
+    loadingOps,
+  ]);
+
+  // ── Research Utilization Score ────────────────────────────────────────────
+
+  const scoreData = useMemo(() => computeResearchUtilizationScore(intelContext), [intelContext]);
+
+  // ── Message generation ────────────────────────────────────────────────────
+
   const [messages, setMessages] = useState<OutreachPlanMessages | null>(null);
   const [editedMessages, setEditedMessages] = useState<Record<MessageKey, string>>({
     firstEmail: "",
@@ -329,86 +775,62 @@ export default function ResearchOutreach() {
     followUp2: "",
     objectionResponse: "",
   });
-
   const [activeTab, setActiveTab] = useState<MessageKey>("firstEmail");
   const [savedOpTab, setSavedOpTab] = useState<MessageKey | null>(null);
 
-  const buildResearchContext = useCallback((): ResearchContext | null => {
-    if (!selectedTarget) return null;
-    return {
-      targetName: selectedTarget.name,
-      company: selectedTarget.company,
-      platform: selectedTarget.platform || researchDraft.audienceSize ? selectedTarget.platform : null,
-      audienceSize: researchDraft.audienceSize || null,
-      contentAngle: researchDraft.contentAngle || null,
-      notes: researchDraft.notes || null,
-      website: selectedTarget.website,
-      socialUrl: selectedTarget.socialUrl,
-    };
-  }, [selectedTarget, researchDraft]);
-
-  const outreachAngle = useMemo(() => {
-    if (!selectedTarget || !selectedProduct) return "";
-    const notes = researchDraft.notes || selectedTarget.notes || "";
-    const contentAngle = researchDraft.contentAngle || selectedTarget.contentAngle || "";
-    const audienceSize = researchDraft.audienceSize || selectedTarget.audienceSize || "";
-    const parts = [];
-    if (contentAngle) parts.push(contentAngle);
-    if (notes) parts.push(notes);
-    if (audienceSize) parts.push(`Audience size: ${audienceSize}`);
-    return parts.join(". ") || `${selectedTarget.partnerCategory}s in the ${selectedProduct.category} space are a strong fit for ${selectedProduct.name}.`;
-  }, [selectedTarget, selectedProduct, researchDraft]);
-
-  const commission = selectedProduct
-    ? `${selectedProduct.commissionOffer}%`
-    : "35–40%";
+  const commission = selectedProduct ? `${selectedProduct.commissionOffer}%` : "35–40%";
 
   const generate = useCallback(() => {
     if (!selectedTarget || !selectedProduct) return;
-    const research = buildResearchContext();
-    const msgs = research
-      ? generateResearchOutreachMessages(
-          selectedTarget.partnerCategory,
-          selectedProduct,
-          commission,
-          outreachAngle,
-          research,
-        )
-      : null;
-    if (msgs) {
-      setMessages(msgs);
-      setEditedMessages({
-        firstEmail: "",
-        dm: "",
-        followUp1: "",
-        followUp2: "",
-        objectionResponse: "",
-      });
-      setSavedOpTab(null);
+
+    let msgs: OutreachPlanMessages;
+    if (intelContext) {
+      msgs = generateIntelligenceOutreachMessages(selectedProduct, commission, intelContext);
+    } else {
+      // Fallback to legacy research messages
+      const research: ResearchContext = {
+        targetName: selectedTarget.name,
+        company: selectedTarget.company,
+        platform: selectedTarget.platform,
+        audienceSize: researchDraft.audienceSize || selectedTarget.audienceSize || null,
+        contentAngle: researchDraft.contentAngle || selectedTarget.contentAngle || null,
+        notes: researchDraft.notes || selectedTarget.notes || null,
+        website: selectedTarget.website,
+        socialUrl: selectedTarget.socialUrl,
+      };
+      const outreachAngle =
+        researchDraft.contentAngle ||
+        selectedTarget.contentAngle ||
+        `${selectedTarget.partnerCategory}s in the ${selectedProduct.category} space are a strong fit for ${selectedProduct.name}.`;
+      msgs = generateResearchOutreachMessages(
+        selectedTarget.partnerCategory,
+        selectedProduct,
+        commission,
+        outreachAngle,
+        research,
+      );
     }
-  }, [selectedTarget, selectedProduct, buildResearchContext, commission, outreachAngle]);
+
+    setMessages(msgs);
+    setEditedMessages({ firstEmail: "", dm: "", followUp1: "", followUp2: "", objectionResponse: "" });
+    setSavedOpTab(null);
+  }, [selectedTarget, selectedProduct, intelContext, commission, researchDraft]);
 
   const getMessage = useCallback(
-    (key: MessageKey): string => {
-      return editedMessages[key] || messages?.[key] || "";
-    },
+    (key: MessageKey): string => editedMessages[key] || messages?.[key] || "",
     [editedMessages, messages],
   );
-
-  const score = useMemo(() => {
-    const research = buildResearchContext();
-    return computePersonalisationScore(research, !!selectedProduct, outreachAngle.length > 20);
-  }, [buildResearchContext, selectedProduct, outreachAngle]);
 
   const saveAsOpMutation = useMutation({
     mutationFn: (tab: Tab) => {
       if (!selectedTarget || !selectedProduct) throw new Error("No target/product");
       const msg = getMessage(tab.key);
-      const subject = tab.key === "firstEmail"
-        ? `Partnership opportunity — ${selectedProduct.name} × ${selectedTarget.partnerCategory}`
-        : tab.key === "dm"
-        ? undefined
-        : `Re: Partnership opportunity — ${selectedProduct.name}`;
+      const subject =
+        tab.key === "firstEmail"
+          ? `Partnership opportunity — ${selectedProduct.name} × ${selectedTarget.partnerCategory}`
+          : tab.key === "dm"
+          ? undefined
+          : `Re: Partnership opportunity — ${selectedProduct.name}`;
       return createOutreachOperation({
         targetId: selectedTarget.id,
         creatorName: selectedTarget.name,
@@ -424,6 +846,7 @@ export default function ResearchOutreach() {
       setSavedOpTab(tab.key);
       qc.invalidateQueries({ queryKey: ["outreach-operations"] });
       qc.invalidateQueries({ queryKey: ["outreach-metrics"] });
+      qc.invalidateQueries({ queryKey: ["outreach-operations-all"] });
       toast({ title: "Saved as draft in Outreach Operations" });
     },
     onError: (e: Error) => {
@@ -432,6 +855,8 @@ export default function ResearchOutreach() {
   });
 
   const activeTabDef = TABS.find((t) => t.key === activeTab)!;
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
@@ -449,7 +874,7 @@ export default function ResearchOutreach() {
             Research-Based Outreach Letters
           </h1>
           <p className="text-muted-foreground text-sm mt-0.5">
-            Select a target, fill in research notes, then generate a personalised 5-message sequence.
+            Letters powered by product intelligence, qualification scores, contact data, and partner strategy.
           </p>
         </div>
       </div>
@@ -458,12 +883,15 @@ export default function ResearchOutreach() {
       <div className="flex items-start gap-3 p-4 rounded-xl bg-violet-50 border border-violet-200 text-sm">
         <Info className="w-4 h-4 text-violet-600 flex-shrink-0 mt-0.5" />
         <div className="text-violet-800 leading-relaxed">
-          <strong>Why this is different from generic outreach:</strong> These letters use your actual research about this specific person — their audience size, recent content, and what makes them a good fit. The more research you add, the higher the personalisation score and the better the response rate.
+          <strong>How intelligence powers outreach:</strong> Each letter draws from 5 sources —
+          Product Intelligence (market context), Partner Strategy (outreach angle), Qualification Engine
+          (why this creator was selected), Contact Intelligence (preferred channel), and Outreach History
+          (prior engagement). The Research Utilization Score tells you how much of that data is being used.
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column: Target + Research */}
+        {/* Left column: Target + Intelligence + Research + Score */}
         <div className="space-y-4">
           {/* Target Selector */}
           <Card>
@@ -480,10 +908,7 @@ export default function ResearchOutreach() {
                   Loading targets…
                 </div>
               ) : (
-                <Select
-                  value={selectedTargetId}
-                  onValueChange={setSelectedTargetId}
-                >
+                <Select value={selectedTargetId} onValueChange={setSelectedTargetId}>
                   <SelectTrigger>
                     <SelectValue placeholder="Choose a target…" />
                   </SelectTrigger>
@@ -506,7 +931,7 @@ export default function ResearchOutreach() {
 
               {selectedTarget && (
                 <div className="space-y-1.5 text-xs">
-                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <div className="flex items-center gap-1.5 text-muted-foreground flex-wrap">
                     <Badge variant="outline" className="text-xs capitalize">
                       {selectedTarget.partnerCategory}
                     </Badge>
@@ -553,6 +978,24 @@ export default function ResearchOutreach() {
                       Social profile
                     </a>
                   )}
+                  {/* Quick qualification signal */}
+                  {qualification && (
+                    <div className="flex items-center gap-1.5 pt-0.5">
+                      <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                      <span className="text-emerald-700 font-medium">
+                        {qualification.qualificationLabel} · {qualification.partnerFitScore}/100
+                      </span>
+                    </div>
+                  )}
+                  {/* Quick contact signal */}
+                  {contactIntel?.businessEmail && (
+                    <div className="flex items-center gap-1.5">
+                      <Mail className="w-3 h-3 text-blue-600" />
+                      <span className="text-blue-700 font-medium truncate">
+                        {contactIntel.businessEmail}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -564,10 +1007,7 @@ export default function ResearchOutreach() {
               <CardTitle className="text-sm">Product</CardTitle>
             </CardHeader>
             <CardContent>
-              <Select
-                value={selectedProdId}
-                onValueChange={setSelectedProdId}
-              >
+              <Select value={selectedProdId} onValueChange={setSelectedProdId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Choose a product…" />
                 </SelectTrigger>
@@ -580,19 +1020,45 @@ export default function ResearchOutreach() {
                 </SelectContent>
               </Select>
               {selectedProduct && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  Commission: <strong className="text-primary">{selectedProduct.commissionOffer}%</strong> · {selectedProduct.price}
-                </p>
+                <div className="mt-2 space-y-0.5">
+                  <p className="text-xs text-muted-foreground">
+                    Commission: <strong className="text-primary">{selectedProduct.commissionOffer}%</strong>{" "}
+                    · {selectedProduct.price}
+                  </p>
+                  {productIntel && (
+                    <p className="text-xs text-muted-foreground">
+                      Market: <strong>{productIntel.mainMarket}</strong> ·{" "}
+                      <span
+                        className={
+                          productIntel.campaignOpportunityRating === "Exceptional"
+                            ? "text-emerald-600"
+                            : productIntel.campaignOpportunityRating === "Strong"
+                            ? "text-blue-600"
+                            : "text-amber-600"
+                        }
+                      >
+                        {productIntel.campaignOpportunityRating} opportunity
+                      </span>
+                    </p>
+                  )}
+                </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Research Panel */}
+          {/* Intelligence Panel */}
+          <IntelPanel
+            sources={intelSources}
+            isExpanded={intelPanelExpanded}
+            onToggle={() => setIntelPanelExpanded((v) => !v)}
+          />
+
+          {/* Research Notes */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-1.5">
                 <BookOpen className="w-4 h-4 text-muted-foreground" />
-                Research Notes
+                Manual Research Notes
                 {selectedTarget && (
                   <span className="ml-auto text-xs text-muted-foreground font-normal">
                     Saved to target
@@ -656,47 +1122,12 @@ export default function ResearchOutreach() {
             </CardContent>
           </Card>
 
-          {/* Personalisation Score */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-1.5">
-                <BarChart2 className="w-4 h-4 text-muted-foreground" />
-                Personalisation Score
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className={`text-2xl font-bold ${SCORE_COLORS(score)}`}>
-                  {score}%
-                </span>
-                <span className={`text-xs font-medium ${SCORE_COLORS(score)}`}>
-                  {SCORE_LABEL(score)}
-                </span>
-              </div>
-              <Progress value={score} className="h-2" />
-              <ul className="space-y-1 text-xs text-muted-foreground mt-2">
-                {[
-                  { label: "Target selected", done: !!selectedTarget },
-                  { label: "Product selected", done: !!selectedProduct },
-                  { label: "Audience size filled", done: !!researchDraft.audienceSize },
-                  { label: "Content angle filled", done: !!researchDraft.contentAngle },
-                  { label: "Notes / fit reasoning", done: !!researchDraft.notes },
-                  { label: "Company name", done: !!selectedTarget?.company },
-                ].map((item) => (
-                  <li key={item.label} className="flex items-center gap-1.5">
-                    {item.done ? (
-                      <CheckCircle2 className="w-3 h-3 text-emerald-600 flex-shrink-0" />
-                    ) : (
-                      <div className="w-3 h-3 rounded-full border-2 border-muted-foreground/30 flex-shrink-0" />
-                    )}
-                    <span className={item.done ? "text-foreground" : ""}>
-                      {item.label}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
+          {/* Research Utilization Score */}
+          <UtilizationScoreCard
+            scoreData={scoreData}
+            selectedTarget={selectedTarget}
+            selectedProduct={selectedProduct}
+          />
 
           {/* Generate button */}
           <Button
@@ -720,15 +1151,40 @@ export default function ResearchOutreach() {
               <div>
                 <p className="font-semibold text-lg">Ready to generate</p>
                 <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-                  Select a target, add research notes, then click Generate Outreach Sequence.
+                  Select a target and product, then click Generate Outreach Sequence.
                 </p>
               </div>
-              <div className="text-xs text-muted-foreground">
-                Higher personalisation score → better response rate
-              </div>
+              {scoreData.total > 0 && (
+                <div className="flex items-center gap-2 text-sm">
+                  <span className={`font-bold ${SCORE_COLORS(scoreData.total)}`}>
+                    {scoreData.total}%
+                  </span>
+                  <span className="text-muted-foreground">research utilization</span>
+                  <span className="text-xs text-muted-foreground">
+                    ({intelSources.filter((s) => s.status === "loaded").length}/5 sources loaded)
+                  </span>
+                </div>
+              )}
             </div>
           ) : (
             <>
+              {/* Intelligence used banner */}
+              <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground border rounded-lg px-3 py-2 bg-muted/30">
+                <Brain className="w-3.5 h-3.5 text-violet-600 shrink-0" />
+                <span className="font-medium text-foreground">Intelligence used:</span>
+                {intelSources
+                  .filter((s) => s.status === "loaded")
+                  .map((s) => (
+                    <Badge key={s.label} variant="outline" className="text-[10px] h-4 px-1.5">
+                      {s.label}
+                    </Badge>
+                  ))}
+                <span className="ml-auto font-medium">
+                  Score:{" "}
+                  <span className={SCORE_COLORS(scoreData.total)}>{scoreData.total}%</span>
+                </span>
+              </div>
+
               {/* Tab bar */}
               <div className="flex gap-1 flex-wrap">
                 {TABS.map((tab) => {
@@ -809,10 +1265,7 @@ export default function ResearchOutreach() {
                   <Textarea
                     value={getMessage(activeTab)}
                     onChange={(e) =>
-                      setEditedMessages((prev) => ({
-                        ...prev,
-                        [activeTab]: e.target.value,
-                      }))
+                      setEditedMessages((prev) => ({ ...prev, [activeTab]: e.target.value }))
                     }
                     className="min-h-[340px] font-mono text-sm resize-none"
                   />
