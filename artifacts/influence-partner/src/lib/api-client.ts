@@ -256,6 +256,8 @@ export interface YouTubeChannel {
   discoveryScore: number;
   discoveryLabel: "Excellent" | "Good" | "Moderate" | "Low";
   searchRank: number;
+  latestVideoTitle: string | null;
+  latestVideoPublishedAt: string | null;
 }
 
 export interface YouTubeSearchResponse {

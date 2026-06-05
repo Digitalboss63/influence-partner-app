@@ -28,6 +28,18 @@ interface YtChannelItem {
     videoCount?: string;
     hiddenSubscriberCount?: boolean;
   };
+  contentDetails?: {
+    relatedPlaylists?: {
+      uploads?: string;
+    };
+  };
+}
+
+interface YtPlaylistItem {
+  snippet: {
+    title: string;
+    publishedAt: string;
+  };
 }
 
 // ─── Normalised result type (exported to frontend) ───────────────────────────
@@ -44,6 +56,8 @@ export interface YoutubeChannel {
   discoveryScore: number;
   discoveryLabel: "Excellent" | "Good" | "Moderate" | "Low";
   searchRank: number;
+  latestVideoTitle: string | null;
+  latestVideoPublishedAt: string | null;
 }
 
 // ─── Scoring ──────────────────────────────────────────────────────────────────
@@ -149,7 +163,7 @@ router.get("/youtube/search", async (req, res): Promise<void> => {
   const minSubs = parseInt(minimumSubscribers ?? "0", 10) || 0;
 
   try {
-    // 1. Search for channels matching keyword
+    // 1. Search for channels matching keyword (100 quota units)
     const searchResp = await ytFetch<{ items?: YtSearchItem[] }>("/search", {
       part: "snippet",
       type: "channel",
@@ -164,10 +178,11 @@ router.get("/youtube/search", async (req, res): Promise<void> => {
       return;
     }
 
-    // 2. Fetch channel statistics in a single batch call
+    // 2. Fetch channel statistics + contentDetails in a single batch call (1 quota unit)
+    //    contentDetails gives us the uploads playlist ID for latest-video fetching.
     const channelIds = items.map((i) => i.id.channelId).join(",");
     const channelsResp = await ytFetch<{ items?: YtChannelItem[] }>("/channels", {
-      part: "statistics,snippet",
+      part: "statistics,snippet,contentDetails",
       id: channelIds,
       key: apiKey,
     });
@@ -213,18 +228,60 @@ router.get("/youtube/search", async (req, res): Promise<void> => {
         discoveryScore: score,
         discoveryLabel: discoveryLabel(score),
         searchRank: index + 1,
+        latestVideoTitle: null,
+        latestVideoPublishedAt: null,
       };
     });
 
     // Sort by discovery score descending
     channels.sort((a, b) => b.discoveryScore - a.discoveryScore);
 
+    // 4. Fetch latest video for each channel in parallel (1 quota unit each).
+    //    Quota cost: ~1 unit × N channels (typically 10–20 channels after filtering).
+    //    Total per search: 100 (search.list) + 1 (channels.list) + N (playlistItems) ≈ 115–125 units.
+    //    Uses Promise.allSettled so individual failures don't surface to the user.
+    const latestVideoMap = new Map<string, { title: string; publishedAt: string }>();
+
+    await Promise.allSettled(
+      channels.map(async (ch) => {
+        const uploadsPlaylistId =
+          channelMap.get(ch.channelId)?.contentDetails?.relatedPlaylists?.uploads;
+        if (!uploadsPlaylistId) return;
+        try {
+          const resp = await ytFetch<{ items?: YtPlaylistItem[] }>("/playlistItems", {
+            part: "snippet",
+            playlistId: uploadsPlaylistId,
+            maxResults: "1",
+            key: apiKey,
+          });
+          const item = resp.items?.[0];
+          if (item?.snippet?.title) {
+            latestVideoMap.set(ch.channelId, {
+              title: item.snippet.title,
+              publishedAt: item.snippet.publishedAt,
+            });
+          }
+        } catch {
+          // Per-channel failure — degrade gracefully, don't fail the whole request
+        }
+      }),
+    );
+
+    // Merge latest video data into channels
+    const finalChannels = channels.map((ch) => {
+      const latest = latestVideoMap.get(ch.channelId);
+      return latest
+        ? { ...ch, latestVideoTitle: latest.title, latestVideoPublishedAt: latest.publishedAt }
+        : ch;
+    });
+
+    const videosFetched = latestVideoMap.size;
     req.log.info(
-      { keyword, partnerCategory, minSubs, resultCount: channels.length },
+      { keyword, partnerCategory, minSubs, resultCount: finalChannels.length, videosFetched },
       "YouTube search complete",
     );
 
-    res.json({ channels, total: channels.length });
+    res.json({ channels: finalChannels, total: finalChannels.length });
   } catch (err) {
     if ((err as Error).name === "QuotaExceeded") {
       res.status(429).json({

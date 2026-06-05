@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   youtubeSearch,
   createProspect,
@@ -14,6 +14,7 @@ import {
   deleteSearchHistoryEntry,
   type SearchHistoryEntry,
 } from "@/lib/ytStats";
+import { generateProductIntelligence } from "@/lib/productIntelligence";
 import type { Product } from "@/types/influencePartner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,6 +50,9 @@ import {
   MessageSquare,
   ArrowRight,
   Package,
+  Download,
+  Film,
+  Filter,
 } from "lucide-react";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -80,13 +84,39 @@ const MIN_SUBSCRIBER_OPTIONS = [
 
 const SCORE_CONFIG: Record<
   YouTubeChannel["discoveryLabel"],
-  { color: string; bg: string; dot: string }
+  { color: string; bg: string; dot: string; chipActive: string; chipInactive: string }
 > = {
-  Excellent: { color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200", dot: "bg-emerald-500" },
-  Good: { color: "text-blue-700", bg: "bg-blue-50 border-blue-200", dot: "bg-blue-500" },
-  Moderate: { color: "text-amber-700", bg: "bg-amber-50 border-amber-200", dot: "bg-amber-400" },
-  Low: { color: "text-gray-600", bg: "bg-gray-50 border-gray-200", dot: "bg-gray-400" },
+  Excellent: {
+    color: "text-emerald-700",
+    bg: "bg-emerald-50 border-emerald-200",
+    dot: "bg-emerald-500",
+    chipActive: "bg-emerald-600 text-white border-emerald-600",
+    chipInactive: "border-emerald-200 text-emerald-700 hover:bg-emerald-50",
+  },
+  Good: {
+    color: "text-blue-700",
+    bg: "bg-blue-50 border-blue-200",
+    dot: "bg-blue-500",
+    chipActive: "bg-blue-600 text-white border-blue-600",
+    chipInactive: "border-blue-200 text-blue-700 hover:bg-blue-50",
+  },
+  Moderate: {
+    color: "text-amber-700",
+    bg: "bg-amber-50 border-amber-200",
+    dot: "bg-amber-400",
+    chipActive: "bg-amber-500 text-white border-amber-500",
+    chipInactive: "border-amber-200 text-amber-700 hover:bg-amber-50",
+  },
+  Low: {
+    color: "text-gray-600",
+    bg: "bg-gray-50 border-gray-200",
+    dot: "bg-gray-400",
+    chipActive: "bg-gray-500 text-white border-gray-500",
+    chipInactive: "border-gray-200 text-gray-600 hover:bg-gray-50",
+  },
 };
+
+type ScoreFilter = "all" | YouTubeChannel["discoveryLabel"];
 
 const FALLBACK_KEYWORDS = [
   "Mortgage Coach",
@@ -126,31 +156,67 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString();
 }
 
-// ─── Product-suggested keywords ───────────────────────────────────────────────
+function formatVideoAge(iso: string): string {
+  const d = new Date(iso);
+  const diffDays = Math.floor((Date.now() - d.getTime()) / 86_400_000);
+  if (diffDays === 0) return "today";
+  if (diffDays === 1) return "yesterday";
+  if (diffDays < 14) return `${diffDays}d ago`;
+  if (diffDays < 60) return `${Math.round(diffDays / 7)}w ago`;
+  if (diffDays < 365) return `${Math.round(diffDays / 30)}mo ago`;
+  return `${Math.round(diffDays / 365)}y ago`;
+}
+
+// ─── Better product-based keyword suggestions ─────────────────────────────────
+// Uses generateProductIntelligence() for niche-specific terms:
+//   subNiches → best YouTube search terms (e.g., "Credit Building", "Debt Management")
+//   buyerPersona.interests → audience intent terms (e.g., "Investing", "FIRE movement")
+//   recommendedCreatorCategories → content category matches
+// Falls back to raw product fields (name, category, targetCustomer).
 
 function buildProductKeywords(product: Product): string[] {
   const seen = new Set<string>();
+  const result: string[] = [];
+
   const add = (s: string | undefined) => {
     if (!s) return;
     const t = s.split(/[,;./\n]/)[0].trim();
-    if (t.length > 2 && t.length <= 50 && !seen.has(t.toLowerCase())) {
+    if (t.length >= 3 && t.length <= 55 && !seen.has(t.toLowerCase())) {
       seen.add(t.toLowerCase());
       result.push(t);
     }
   };
-  const result: string[] = [];
+
+  // Run deterministic intelligence (no API calls)
+  const intel = generateProductIntelligence(product);
+
+  // 1. subNiches (derived from subMarket — excellent search terms)
+  //    e.g., Finance → ["Investment Tracking", "Budgeting", "Wealth Management"]
+  intel.subNiches.forEach((s) => add(s));
+
+  // 2. Buyer persona interests (audience intent)
+  //    e.g., Finance → ["Investing", "FIRE movement", "Crypto"]
+  intel.buyerPersona.interests.slice(0, 3).forEach((s) => add(s));
+
+  // 3. Primary creator categories, split on "/" to get clean terms
+  //    e.g., "Personal Finance / Investing" → "Personal Finance", "Investing"
+  intel.recommendedCreatorCategories
+    .filter((c) => c.fitLevel === "Primary")
+    .forEach((c) => c.category.split(/[/·]/).forEach((s) => add(s.trim())));
+
+  // 4. mainNiche if different from raw category
+  if (intel.mainNiche && intel.mainNiche !== product.category) {
+    intel.mainNiche.split(/[&/·]/).forEach((s) => add(s.trim()));
+  }
+
+  // 5. Product name and category as anchors
   add(product.name);
   add(product.category);
-  if (product.targetCustomer) add(product.targetCustomer);
-  if (product.mainBenefit) add(product.mainBenefit);
-  product.recommendedCreatorCategories
-    ?.filter((c) => c.fitLevel === "Primary" || c.fitLevel === "Secondary")
-    .slice(0, 3)
-    .forEach((c) => add(c.category));
-  return result.slice(0, 7);
+
+  return result.slice(0, 8);
 }
 
-// ─── Channel insights (deterministic) ────────────────────────────────────────
+// ─── Channel insights (deterministic, subscriber-tier based) ─────────────────
 
 interface ChannelInsights {
   matchReason: string;
@@ -201,6 +267,66 @@ function computeInsights(ch: YouTubeChannel): ChannelInsights {
   return { matchReason, whyItFits, outreachAngle, nextAction: action.text, nextActionColor: action.color };
 }
 
+// ─── Prospect notes builder ───────────────────────────────────────────────────
+// Pre-fills the Discovery Workspace prospect with insights so the team
+// knows why this channel was added and how to approach them.
+
+function buildProspectNotes(ch: YouTubeChannel, insights: ChannelInsights): string {
+  const lines: string[] = [
+    `Match Reason: ${insights.matchReason}`,
+    `Why This Fits: ${insights.whyItFits}`,
+    `Suggested Outreach Angle: ${insights.outreachAngle}`,
+  ];
+  if (ch.description) {
+    lines.push("", `About: ${ch.description.slice(0, 300)}`);
+  }
+  return lines.join("\n").slice(0, 1000);
+}
+
+// ─── CSV export ───────────────────────────────────────────────────────────────
+
+function exportToCSV(channels: YouTubeChannel[], searchKeyword: string) {
+  const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const headers = [
+    "Channel Name",
+    "URL",
+    "Subscribers",
+    "Discovery Score",
+    "Score Label",
+    "Description",
+    "Suggested Outreach Angle",
+    "Latest Video Title",
+    "Latest Video Date",
+  ].map(esc).join(",");
+
+  const rows = channels.map((ch) => {
+    const ins = computeInsights(ch);
+    return [
+      ch.channelName,
+      ch.channelUrl,
+      ch.subscriberCount,
+      ch.discoveryScore,
+      ch.discoveryLabel,
+      ch.description,
+      ins.outreachAngle,
+      ch.latestVideoTitle ?? "",
+      ch.latestVideoPublishedAt ? new Date(ch.latestVideoPublishedAt).toLocaleDateString() : "",
+    ].map(esc).join(",");
+  });
+
+  const csv = [headers, ...rows].join("\r\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const slug = searchKeyword.toLowerCase().replace(/\s+/g, "-").slice(0, 30);
+  a.download = `yt-discovery-${slug}-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function YoutubeDiscovery() {
@@ -229,19 +355,20 @@ export default function YoutubeDiscovery() {
     minimumSubscribers: number;
   } | null>(null);
 
-  // ── Bulk / per-channel state ──────────────────────────────────────────────
+  // ── Per-channel tracking ──────────────────────────────────────────────────
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
   const [addingId, setAddingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkAdding, setIsBulkAdding] = useState(false);
-
-  // ── Insights expanded per card ────────────────────────────────────────────
   const [expandedInsights, setExpandedInsights] = useState<Set<string>>(new Set());
 
-  // ── Search history (local state, synced to localStorage) ─────────────────
+  // ── Score filter ──────────────────────────────────────────────────────────
+  const [scoreFilter, setScoreFilter] = useState<ScoreFilter>("all");
+
+  // ── Search history ────────────────────────────────────────────────────────
   const [history, setHistory] = useState<SearchHistoryEntry[]>(() => getSearchHistory());
 
-  // ── Existing prospects (for deduplication) ────────────────────────────────
+  // ── Existing prospects (deduplication) ───────────────────────────────────
   const { data: prospects = [] } = useQuery({
     queryKey: ["prospects"],
     queryFn: () => getProspects(),
@@ -303,34 +430,51 @@ export default function YoutubeDiscovery() {
       ? Math.round(channels.reduce((s, c) => s + c.discoveryScore, 0) / channels.length)
       : 0;
 
+  // ── Filtered channels (score filter) ─────────────────────────────────────
+  const filteredChannels = useMemo(
+    () =>
+      scoreFilter === "all" ? channels : channels.filter((ch) => ch.discoveryLabel === scoreFilter),
+    [channels, scoreFilter],
+  );
+
+  // Score counts for filter chips
+  const scoreCounts = useMemo(() => {
+    const counts: Record<string, number> = { Excellent: 0, Good: 0, Moderate: 0, Low: 0 };
+    channels.forEach((ch) => counts[ch.discoveryLabel]++);
+    return counts;
+  }, [channels]);
+
   // ── Derived selection state ───────────────────────────────────────────────
   const selectableIds = useMemo(
     () =>
-      channels
+      filteredChannels
         .filter((ch) => !addedIds.has(ch.channelId) && !existingUrls.has(ch.channelUrl))
         .map((ch) => ch.channelId),
-    [channels, addedIds, existingUrls],
+    [filteredChannels, addedIds, existingUrls],
   );
-  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
+  const allSelected =
+    selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
   const selectedCount = [...selectedIds].filter((id) => selectableIds.includes(id)).length;
 
-  // ── Mutation: single add ──────────────────────────────────────────────────
-  const addMutation = useMutation({
-    mutationFn: (ch: YouTubeChannel) =>
-      createProspect({
+  // ── Add single channel ────────────────────────────────────────────────────
+  async function handleAdd(ch: YouTubeChannel) {
+    if (addedIds.has(ch.channelId) || addingId === ch.channelId) return;
+    setAddingId(ch.channelId);
+    const insights = computeInsights(ch);
+    try {
+      await createProspect({
         name: ch.channelName,
         company: ch.channelName,
         website: ch.channelUrl,
         socialUrl: ch.channelUrl,
         partnerCategory:
           activeParams?.partnerCategory !== "_none_" ? activeParams?.partnerCategory : undefined,
-        notes: ch.description ? ch.description.slice(0, 500) : undefined,
+        notes: buildProspectNotes(ch, insights),
         audienceSize: `${formatSubscribers(ch.subscriberCount)} subscribers`,
         platform: "YouTube",
         source: "YouTube",
         status: "New Prospect",
-      }),
-    onSuccess: (_data, ch) => {
+      });
       setAddedIds((prev) => new Set([...prev, ch.channelId]));
       setSelectedIds((prev) => {
         const next = new Set(prev);
@@ -339,21 +483,12 @@ export default function YoutubeDiscovery() {
       });
       qc.invalidateQueries({ queryKey: ["prospects"] });
       toast({ title: "Added to Discovery Workspace", description: `${ch.channelName} is now a prospect.` });
-    },
-    onError: (e, ch) => {
+    } catch (e) {
       toast({
         title: `Failed to add ${ch.channelName}`,
         description: (e as Error).message,
         variant: "destructive",
       });
-    },
-  });
-
-  async function handleAdd(ch: YouTubeChannel) {
-    if (addedIds.has(ch.channelId) || addingId === ch.channelId) return;
-    setAddingId(ch.channelId);
-    try {
-      await addMutation.mutateAsync(ch);
     } finally {
       setAddingId(null);
     }
@@ -374,6 +509,7 @@ export default function YoutubeDiscovery() {
     let failed = 0;
 
     for (const ch of toAdd) {
+      const insights = computeInsights(ch);
       try {
         await createProspect({
           name: ch.channelName,
@@ -382,7 +518,7 @@ export default function YoutubeDiscovery() {
           socialUrl: ch.channelUrl,
           partnerCategory:
             activeParams?.partnerCategory !== "_none_" ? activeParams?.partnerCategory : undefined,
-          notes: ch.description ? ch.description.slice(0, 500) : undefined,
+          notes: buildProspectNotes(ch, insights),
           audienceSize: `${formatSubscribers(ch.subscriberCount)} subscribers`,
           platform: "YouTube",
           source: "YouTube",
@@ -405,12 +541,13 @@ export default function YoutubeDiscovery() {
     });
   }
 
-  // ── Search submit ─────────────────────────────────────────────────────────
+  // ── Search helpers ────────────────────────────────────────────────────────
   function doSearch(kw: string, cat: string, minSubs: string) {
     setActiveParams({ keyword: kw, partnerCategory: cat, minimumSubscribers: parseInt(minSubs, 10) || 0 });
     setAddedIds(new Set());
     setSelectedIds(new Set());
     setExpandedInsights(new Set());
+    setScoreFilter("all");
   }
 
   function handleSearch(e: React.FormEvent) {
@@ -450,11 +587,7 @@ export default function YoutubeDiscovery() {
   }
 
   function toggleSelectAll() {
-    if (allSelected) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(selectableIds));
-    }
+    setSelectedIds(allSelected ? new Set() : new Set(selectableIds));
   }
 
   const errorMessage = isError ? ((error as Error)?.message ?? "Search failed. Please try again.") : null;
@@ -515,7 +648,7 @@ export default function YoutubeDiscovery() {
             </div>
           </div>
 
-          {/* Product-suggested keywords */}
+          {/* Product-suggested keywords (intelligence-powered) */}
           {productKeywords.length > 0 && (
             <div className="flex flex-wrap gap-1.5 items-center">
               <span className="flex items-center gap-1 text-xs text-primary font-medium mr-1">
@@ -588,9 +721,7 @@ export default function YoutubeDiscovery() {
                         {entry.partnerCategory}
                       </Badge>
                     )}
-                    {entry.minimumSubscribers > 0 && (
-                      <span>{formatMinSubs(entry.minimumSubscribers)}</span>
-                    )}
+                    {entry.minimumSubscribers > 0 && <span>{formatMinSubs(entry.minimumSubscribers)}</span>}
                     {entry.resultCount > 0 && (
                       <span>{entry.resultCount} results · avg score {entry.avgScore}</span>
                     )}
@@ -662,18 +793,16 @@ export default function YoutubeDiscovery() {
       {/* Results */}
       {channels.length > 0 && (
         <div className="space-y-3">
-          {/* Results header + bulk controls */}
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                Results for "{activeParams?.keyword}"
-                {activeParams?.partnerCategory !== "_none_" && (
-                  <span className="normal-case font-normal"> · {activeParams?.partnerCategory}</span>
-                )}
-              </h2>
-            </div>
+          {/* Results header */}
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              Results for "{activeParams?.keyword}"
+              {activeParams?.partnerCategory !== "_none_" && (
+                <span className="normal-case font-normal"> · {activeParams?.partnerCategory}</span>
+              )}
+            </h2>
 
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
               {/* Select all */}
               {selectableIds.length > 0 && (
                 <button
@@ -693,14 +822,21 @@ export default function YoutubeDiscovery() {
                   onClick={handleBulkAdd}
                   disabled={isBulkAdding}
                 >
-                  {isBulkAdding ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Plus className="w-3.5 h-3.5" />
-                  )}
+                  {isBulkAdding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                   {isBulkAdding ? "Adding…" : `Add Selected (${selectedCount})`}
                 </Button>
               )}
+
+              {/* Export CSV */}
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1"
+                onClick={() => exportToCSV(filteredChannels, activeParams?.keyword ?? "results")}
+              >
+                <Download className="w-3.5 h-3.5" />
+                Export{filteredChannels.length < channels.length ? ` (${filteredChannels.length})` : ""}
+              </Button>
 
               <span className="text-xs text-muted-foreground">
                 {addedIds.size} of {channels.length} added
@@ -708,9 +844,59 @@ export default function YoutubeDiscovery() {
             </div>
           </div>
 
+          {/* Score filter chips */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Filter className="w-3 h-3" />
+              Filter:
+            </span>
+            <button
+              onClick={() => setScoreFilter("all")}
+              className={`text-xs px-2.5 py-0.5 rounded-full border font-medium transition-colors ${
+                scoreFilter === "all"
+                  ? "bg-foreground text-background border-foreground"
+                  : "border-border text-muted-foreground hover:bg-accent"
+              }`}
+            >
+              All ({channels.length})
+            </button>
+            {(["Excellent", "Good", "Moderate", "Low"] as const).map((label) => {
+              const count = scoreCounts[label];
+              if (count === 0) return null;
+              const cfg = SCORE_CONFIG[label];
+              const isActive = scoreFilter === label;
+              return (
+                <button
+                  key={label}
+                  onClick={() => setScoreFilter(isActive ? "all" : label)}
+                  className={`text-xs px-2.5 py-0.5 rounded-full border font-medium transition-colors ${
+                    isActive ? cfg.chipActive : cfg.chipInactive
+                  }`}
+                >
+                  {label} ({count})
+                </button>
+              );
+            })}
+            {scoreFilter !== "all" && (
+              <span className="text-xs text-muted-foreground">
+                — showing {filteredChannels.length} of {channels.length}
+              </span>
+            )}
+          </div>
+
+          {/* No results after filter */}
+          {filteredChannels.length === 0 && scoreFilter !== "all" && (
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              No {scoreFilter} channels in this search.{" "}
+              <button onClick={() => setScoreFilter("all")} className="underline">
+                Show all
+              </button>
+            </div>
+          )}
+
           {/* Channel cards */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {channels.map((ch) => {
+            {filteredChannels.map((ch) => {
               const scoreCfg = SCORE_CONFIG[ch.discoveryLabel];
               const isAdded = addedIds.has(ch.channelId);
               const isAdding = addingId === ch.channelId;
@@ -727,9 +913,8 @@ export default function YoutubeDiscovery() {
                     isSelected ? "ring-2 ring-primary/40 shadow-sm" : "hover:shadow-sm"
                   }`}
                 >
-                  {/* Card header row */}
+                  {/* Card header */}
                   <div className="flex items-start gap-3">
-                    {/* Checkbox */}
                     {channels.length > 1 && (
                       <div className="pt-0.5 flex-shrink-0">
                         <Checkbox
@@ -740,8 +925,6 @@ export default function YoutubeDiscovery() {
                         />
                       </div>
                     )}
-
-                    {/* Thumbnail */}
                     {ch.thumbnailUrl ? (
                       <img
                         src={ch.thumbnailUrl}
@@ -754,7 +937,6 @@ export default function YoutubeDiscovery() {
                         <Youtube className="w-5 h-5 text-red-500" />
                       </div>
                     )}
-
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
                         <p className="font-semibold text-base leading-tight">{ch.channelName}</p>
@@ -793,6 +975,22 @@ export default function YoutubeDiscovery() {
                       </span>
                     )}
                   </div>
+
+                  {/* Latest video */}
+                  {ch.latestVideoTitle && (
+                    <div className="flex items-start gap-1.5 text-xs text-muted-foreground bg-muted/30 rounded px-2 py-1.5">
+                      <Film className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                      <span className="truncate">
+                        <span className="font-medium text-foreground">Latest: </span>
+                        {ch.latestVideoTitle}
+                        {ch.latestVideoPublishedAt && (
+                          <span className="ml-1 text-muted-foreground/70">
+                            · {formatVideoAge(ch.latestVideoPublishedAt)}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Description */}
                   {ch.description && (
@@ -842,6 +1040,9 @@ export default function YoutubeDiscovery() {
                           <p className={`font-medium ${insights.nextActionColor}`}>{insights.nextAction}</p>
                         </div>
                       </div>
+                      <p className="text-muted-foreground/60 text-[10px] pt-1 border-t border-border/40">
+                        This analysis is saved to the prospect notes in Discovery Workspace
+                      </p>
                     </div>
                   )}
 
