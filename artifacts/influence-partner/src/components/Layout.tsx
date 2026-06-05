@@ -18,12 +18,14 @@ import {
   Send,
   TrendingUp,
   FileBarChart,
+  Megaphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
   { label: "Products", href: "/products", icon: Package },
+  { label: "Campaigns", href: "/campaigns", icon: Megaphone },
   { label: "Discover Creators", href: "/discover", icon: Search },
   { label: "Partner Strategy", href: "/partner-strategy", icon: Compass },
   { label: "Discovery Workspace", href: "/discovery-workspace", icon: Telescope },

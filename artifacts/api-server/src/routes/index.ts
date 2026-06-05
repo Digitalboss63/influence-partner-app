@@ -12,6 +12,7 @@ import contactIntelligenceRouter from "./contact-intelligence";
 import outreachOperationsRouter from "./outreach-operations";
 import performanceRouter from "./performance";
 import reportsRouter from "./reports";
+import campaignsRouter from "./campaigns";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(contactIntelligenceRouter);
 router.use(outreachOperationsRouter);
 router.use(performanceRouter);
 router.use(reportsRouter);
+router.use(campaignsRouter);
 
 export default router;

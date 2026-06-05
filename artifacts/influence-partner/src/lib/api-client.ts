@@ -770,6 +770,161 @@ export const exportContactIntelligenceCsv = (productId?: string): string => {
   return `/api/contact-intelligence/export${qs.toString() ? `?${qs.toString()}` : ""}`;
 };
 
+// ─── Campaigns ────────────────────────────────────────────────────────────────
+
+export type CampaignStatus =
+  | "planning"
+  | "active"
+  | "paused"
+  | "completed"
+  | "cancelled";
+
+export type AssignmentStatus =
+  | "identified"
+  | "contacted"
+  | "interested"
+  | "negotiating"
+  | "contracted"
+  | "completed"
+  | "declined";
+
+export interface ApiCampaign {
+  id: string;
+  productId: string | null;
+  productName: string | null;
+  name: string;
+  description: string | null;
+  objective: string;
+  budget: number;
+  targetCreatorCount: number;
+  assignedCreatorCount: number;
+  status: CampaignStatus;
+  startDate: string | null;
+  endDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+  creatorsCount: number;
+  budgetCommitted: number;
+  budgetUsed: number;
+}
+
+export interface ApiCampaignCreator {
+  id: string;
+  campaignId: string;
+  targetId: string | null;
+  creatorName: string;
+  assignmentStatus: AssignmentStatus;
+  deliverables: string[];
+  estimatedValue: number;
+  actualValue: number;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  targetStatus: string | null;
+  contactReadiness: number | null;
+}
+
+export interface ApiCampaignDetail extends ApiCampaign {
+  creators: ApiCampaignCreator[];
+  outreachRollup: {
+    sent: number;
+    replied: number;
+    interested: number;
+    negotiating: number;
+    converted: number;
+  };
+  budgetCommitted: number;
+  budgetUsed: number;
+  totalRevenue: number;
+}
+
+export interface ApiCampaignMetrics {
+  totalCampaigns: number;
+  activeCampaigns: number;
+  budgetAllocated: number;
+  budgetCommitted: number;
+  budgetUsed: number;
+  creatorsAssigned: number;
+  campaignRoi: number;
+}
+
+export const fetchCampaigns = (): Promise<ApiCampaign[]> =>
+  request<ApiCampaign[]>("/campaigns");
+
+export const fetchCampaign = (id: string): Promise<ApiCampaignDetail> =>
+  request<ApiCampaignDetail>(`/campaigns/${id}`);
+
+export const fetchCampaignMetrics = (): Promise<ApiCampaignMetrics> =>
+  request<ApiCampaignMetrics>("/campaigns/metrics");
+
+export interface CreateCampaignPayload {
+  name: string;
+  productId?: string;
+  objective: string;
+  budget?: number;
+  targetCreatorCount?: number;
+  description?: string;
+  startDate?: string;
+  endDate?: string;
+  status?: CampaignStatus;
+}
+
+export const createCampaign = (
+  payload: CreateCampaignPayload,
+): Promise<ApiCampaign> =>
+  request<ApiCampaign>("/campaigns", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const updateCampaign = (
+  id: string,
+  payload: Partial<CreateCampaignPayload> & { status?: CampaignStatus },
+): Promise<ApiCampaign> =>
+  request<ApiCampaign>(`/campaigns/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+
+export const deleteCampaign = (id: string): Promise<{ success: boolean }> =>
+  request<{ success: boolean }>(`/campaigns/${id}`, { method: "DELETE" });
+
+export interface AddCampaignCreatorPayload {
+  creatorName: string;
+  targetId?: string;
+  assignmentStatus?: AssignmentStatus;
+  deliverables?: string[];
+  estimatedValue?: number;
+  notes?: string;
+}
+
+export const addCampaignCreator = (
+  campaignId: string,
+  payload: AddCampaignCreatorPayload,
+): Promise<ApiCampaignCreator> =>
+  request<ApiCampaignCreator>(`/campaigns/${campaignId}/add-creator`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const updateCampaignCreator = (
+  id: string,
+  payload: Partial<
+    Pick<
+      ApiCampaignCreator,
+      | "assignmentStatus"
+      | "deliverables"
+      | "estimatedValue"
+      | "actualValue"
+      | "notes"
+    >
+  >,
+): Promise<ApiCampaignCreator> =>
+  request<ApiCampaignCreator>(`/campaigns/creator/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+
 // ─── YouTube Discovery ────────────────────────────────────────────────────────
 
 export interface YouTubeChannel {

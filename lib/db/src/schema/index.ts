@@ -622,6 +622,80 @@ export type ContactIntelligence = typeof contactIntelligenceTable.$inferSelect;
 export type VerificationStatus =
   typeof verificationStatusEnum.enumValues[number];
 
+// ─── Campaigns ────────────────────────────────────────────────────────────────
+
+export const campaignStatusEnum = pgEnum("campaign_status", [
+  "planning",
+  "active",
+  "paused",
+  "completed",
+  "cancelled",
+]);
+
+export const assignmentStatusEnum = pgEnum("assignment_status", [
+  "identified",
+  "contacted",
+  "interested",
+  "negotiating",
+  "contracted",
+  "completed",
+  "declined",
+]);
+
+export const campaignsTable = pgTable("campaigns", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  productId: uuid("product_id").references(() => productsTable.id, {
+    onDelete: "cascade",
+  }),
+  name: text("name").notNull(),
+  description: text("description"),
+  objective: text("objective").notNull(),
+  budget: integer("budget").notNull().default(0),
+  targetCreatorCount: integer("target_creator_count").notNull().default(0),
+  assignedCreatorCount: integer("assigned_creator_count").notNull().default(0),
+  status: campaignStatusEnum("status").notNull().default("planning"),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCampaignSchema = createInsertSchema(campaignsTable).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
+export type Campaign = typeof campaignsTable.$inferSelect;
+export type CampaignStatus = typeof campaignStatusEnum.enumValues[number];
+
+export const campaignCreatorsTable = pgTable("campaign_creators", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  campaignId: uuid("campaign_id")
+    .notNull()
+    .references(() => campaignsTable.id, { onDelete: "cascade" }),
+  targetId: uuid("target_id").references(() => partnerTargetsTable.id, {
+    onDelete: "set null",
+  }),
+  creatorName: text("creator_name").notNull(),
+  assignmentStatus: assignmentStatusEnum("assignment_status")
+    .notNull()
+    .default("identified"),
+  deliverables: jsonb("deliverables").$type<string[]>().default([]),
+  estimatedValue: integer("estimated_value").default(0),
+  actualValue: integer("actual_value").default(0),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCampaignCreatorSchema = createInsertSchema(
+  campaignCreatorsTable,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertCampaignCreator = z.infer<typeof insertCampaignCreatorSchema>;
+export type CampaignCreator = typeof campaignCreatorsTable.$inferSelect;
+export type AssignmentStatus = typeof assignmentStatusEnum.enumValues[number];
+
 // ─── Qualification Feedback ───────────────────────────────────────────────────
 
 export const feedbackTypeEnum = pgEnum("feedback_type", [

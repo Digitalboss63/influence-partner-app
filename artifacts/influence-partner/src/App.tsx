@@ -25,6 +25,9 @@ import PerformanceIntelligence from "@/pages/PerformanceIntelligence";
 import HelpPerformanceIntelligence from "@/pages/HelpPerformanceIntelligence";
 import ExecutiveReports from "@/pages/ExecutiveReports";
 import HelpExecutiveReporting from "@/pages/HelpExecutiveReporting";
+import Campaigns from "@/pages/Campaigns";
+import CampaignDetail from "@/pages/CampaignDetail";
+import HelpCampaignManagement from "@/pages/HelpCampaignManagement";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -54,6 +57,9 @@ function Router() {
         <Route path="/performance" component={PerformanceIntelligence} />
         <Route path="/help/performance-intelligence" component={HelpPerformanceIntelligence} />
         <Route path="/help/executive-reporting" component={HelpExecutiveReporting} />
+        <Route path="/campaigns/:id" component={CampaignDetail} />
+        <Route path="/campaigns" component={Campaigns} />
+        <Route path="/help/campaign-management" component={HelpCampaignManagement} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
