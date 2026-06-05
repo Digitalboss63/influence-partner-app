@@ -19,6 +19,7 @@ import {
   TrendingUp,
   FileBarChart,
   Megaphone,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -34,6 +35,7 @@ const navItems = [
   { label: "Contact Intelligence", href: "/contact-intelligence", icon: ContactRound },
   { label: "Targets", href: "/targets", icon: Crosshair },
   { label: "Outreach", href: "/outreach", icon: MessageSquare },
+  { label: "Research Letters", href: "/research-outreach", icon: BookOpen },
   { label: "Outreach Operations", href: "/outreach-operations", icon: Send },
   { label: "Performance", href: "/performance", icon: TrendingUp },
   { label: "Executive Reports", href: "/performance/reports", icon: FileBarChart },

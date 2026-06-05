@@ -28,6 +28,7 @@ import HelpExecutiveReporting from "@/pages/HelpExecutiveReporting";
 import Campaigns from "@/pages/Campaigns";
 import CampaignDetail from "@/pages/CampaignDetail";
 import HelpCampaignManagement from "@/pages/HelpCampaignManagement";
+import ResearchOutreach from "@/pages/ResearchOutreach";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -60,6 +61,7 @@ function Router() {
         <Route path="/campaigns/:id" component={CampaignDetail} />
         <Route path="/campaigns" component={Campaigns} />
         <Route path="/help/campaign-management" component={HelpCampaignManagement} />
+        <Route path="/research-outreach" component={ResearchOutreach} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

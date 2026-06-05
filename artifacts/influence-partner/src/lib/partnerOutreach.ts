@@ -14,6 +14,17 @@ export interface OutreachPlanMessages {
   objectionResponse: string;
 }
 
+export interface ResearchContext {
+  targetName: string;
+  company: string | null;
+  platform: string | null;
+  audienceSize: string | null;
+  contentAngle: string | null;
+  notes: string | null;
+  website: string | null;
+  socialUrl: string | null;
+}
+
 type PartnerFamily =
   | "educator"
   | "podcaster"
@@ -131,17 +142,32 @@ function buildFirstEmail(
   product: Product,
   commission: string,
   outreachAngle: string,
-  family: PartnerFamily
+  family: PartnerFamily,
+  research?: ResearchContext,
 ): string {
   const hook = FAMILY_HOOKS[family];
+  const firstName = research?.targetName
+    ? research.targetName.trim().split(/\s+/)[0]
+    : "[First Name]";
+
+  const companyLine = research?.company
+    ? ` at ${research.company}`
+    : "";
+  const audienceLine = research?.audienceSize
+    ? `\nI've been looking at your work${companyLine} — with ${research.audienceSize} engaged followers${research.platform ? ` on ${research.platform}` : ""}, the alignment here is very strong.`
+    : "";
+  const contentHook = research?.contentAngle
+    ? `\n\n**What caught my eye:**\n${research.contentAngle}`
+    : "";
+
   return `Subject: Partnership opportunity — ${product.name} × ${partnerType}
 
-Hi [First Name],
+Hi ${firstName},
 
-I'm reaching out from ${product.name}. We help ${product.targetCustomer} to ${product.mainBenefit}, and we're looking for a small group of mission-aligned partners to grow with.
+I'm reaching out from ${product.name}. We help ${product.targetCustomer} to ${product.mainBenefit}, and we're looking for a small group of mission-aligned partners to grow with.${audienceLine}
 
 **Why I think you're the right fit:**
-${outreachAngle}
+${outreachAngle}${contentHook}
 
 ${hook.whyTemplate(partnerType, product)}
 
@@ -169,12 +195,23 @@ function buildDM(
   partnerType: string,
   product: Product,
   commission: string,
-  outreachAngle: string
+  outreachAngle: string,
+  research?: ResearchContext,
 ): string {
+  const firstName = research?.targetName
+    ? research.targetName.trim().split(/\s+/)[0]
+    : "[First Name]";
   const firstSentenceAngle = outreachAngle.split(".")[0].toLowerCase();
-  return `Hey [First Name] — I run partnerships for ${product.name}.
+  const audienceHook = research?.audienceSize
+    ? ` Your ${research.audienceSize}-strong audience${research.platform ? ` on ${research.platform}` : ""} is exactly what we're looking for.`
+    : "";
+  const contentNote = research?.contentAngle
+    ? ` Loved your content on "${research.contentAngle.substring(0, 60)}${research.contentAngle.length > 60 ? "…" : ""}".`
+    : "";
 
-We help ${product.targetCustomer} with ${product.mainBenefit}, and I think you'd be a perfect fit as a partner — ${firstSentenceAngle}.
+  return `Hey ${firstName} — I run partnerships for ${product.name}.
+
+We help ${product.targetCustomer} with ${product.mainBenefit}, and I think you'd be a perfect fit as a partner — ${firstSentenceAngle}.${audienceHook}${contentNote}
 
 We're offering ${commission} commission — well above the standard 5–10%. Zero fuss, full creative control on your end.
 
@@ -184,10 +221,15 @@ Worth a quick chat? Happy to send a one-pager over if easier 🙌`;
 function buildFollowUp1(
   partnerType: string,
   product: Product,
-  family: PartnerFamily
+  family: PartnerFamily,
+  research?: ResearchContext,
 ): string {
   const hook = FAMILY_HOOKS[family];
-  return `Hi [First Name],
+  const firstName = research?.targetName
+    ? research.targetName.trim().split(/\s+/)[0]
+    : "[First Name]";
+
+  return `Hi ${firstName},
 
 Just following up on my message from a few days ago about a partnership with ${product.name}.
 
@@ -203,9 +245,14 @@ Partnerships @ ${product.name}`;
 function buildFollowUp2(
   partnerType: string,
   product: Product,
-  commission: string
+  commission: string,
+  research?: ResearchContext,
 ): string {
-  return `Hi [First Name],
+  const firstName = research?.targetName
+    ? research.targetName.trim().split(/\s+/)[0]
+    : "[First Name]";
+
+  return `Hi ${firstName},
 
 Last note from me on this — I don't want to clutter your inbox.
 
@@ -223,9 +270,14 @@ Partnerships @ ${product.name}`;
 function buildObjectionResponse(
   partnerType: string,
   product: Product,
-  commission: string
+  commission: string,
+  research?: ResearchContext,
 ): string {
-  return `Hi [First Name],
+  const firstName = research?.targetName
+    ? research.targetName.trim().split(/\s+/)[0]
+    : "[First Name]";
+
+  return `Hi ${firstName},
 
 Thanks for getting back to me — genuinely appreciate it.
 
@@ -247,13 +299,36 @@ Best,
 Partnerships @ ${product.name}`;
 }
 
-// ─── Main export ──────────────────────────────────────────────────────────────
+// ─── Personalisation scoring ──────────────────────────────────────────────────
+
+export function computePersonalisationScore(
+  research: ResearchContext | null,
+  hasProduct: boolean,
+  hasAngle: boolean,
+): number {
+  if (!research) return hasProduct && hasAngle ? 20 : 0;
+  const fields: (string | null | undefined)[] = [
+    research.targetName,
+    research.company,
+    research.platform,
+    research.audienceSize,
+    research.contentAngle,
+    research.notes,
+  ];
+  const filled = fields.filter((f) => f && f.trim().length > 0).length;
+  const base = Math.round((filled / fields.length) * 60);
+  const productBonus = hasProduct ? 20 : 0;
+  const angleBonus = hasAngle ? 20 : 0;
+  return Math.min(100, base + productBonus + angleBonus);
+}
+
+// ─── Main exports ─────────────────────────────────────────────────────────────
 
 export function generatePartnerOutreachMessages(
   partnerType: string,
   product: Product,
   commission: string,
-  outreachAngle: string
+  outreachAngle: string,
 ): OutreachPlanMessages {
   const family = detectFamily(partnerType);
   const hook = FAMILY_HOOKS[family];
@@ -268,5 +343,28 @@ export function generatePartnerOutreachMessages(
     followUp1: buildFollowUp1(partnerType, product, family),
     followUp2: buildFollowUp2(partnerType, product, commission),
     objectionResponse: buildObjectionResponse(partnerType, product, commission),
+  };
+}
+
+export function generateResearchOutreachMessages(
+  partnerType: string,
+  product: Product,
+  commission: string,
+  outreachAngle: string,
+  research: ResearchContext,
+): OutreachPlanMessages {
+  const family = detectFamily(partnerType);
+  const hook = FAMILY_HOOKS[family];
+
+  return {
+    whySelected: hook.whyTemplate(partnerType, product),
+    offerAngle: outreachAngle,
+    followUpTiming: hook.followUpTiming,
+    cta: hook.ctaText,
+    firstEmail: buildFirstEmail(partnerType, product, commission, outreachAngle, family, research),
+    dm: buildDM(partnerType, product, commission, outreachAngle, research),
+    followUp1: buildFollowUp1(partnerType, product, family, research),
+    followUp2: buildFollowUp2(partnerType, product, commission, research),
+    objectionResponse: buildObjectionResponse(partnerType, product, commission, research),
   };
 }

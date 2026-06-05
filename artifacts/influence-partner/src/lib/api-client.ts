@@ -118,6 +118,8 @@ export interface ApiPartnerTarget {
   phone: string | null;
   socialUrl: string | null;
   notes: string | null;
+  audienceSize: string | null;
+  contentAngle: string | null;
   status: PartnerTargetStatus;
   userId: string | null;
   organizationId: string | null;
@@ -136,6 +138,8 @@ export interface CreatePartnerTargetPayload {
   phone?: string;
   socialUrl?: string;
   notes?: string;
+  audienceSize?: string;
+  contentAngle?: string;
   status?: PartnerTargetStatus;
 }
 

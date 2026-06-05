@@ -273,6 +273,8 @@ export const partnerTargetsTable = pgTable("partner_targets", {
   phone: text("phone"),
   socialUrl: text("social_url"),
   notes: text("notes"),
+  audienceSize: text("audience_size"),
+  contentAngle: text("content_angle"),
   status: partnerTargetStatusEnum("status").notNull().default("Not Contacted"),
   userId: text("user_id"),
   organizationId: text("organization_id"),

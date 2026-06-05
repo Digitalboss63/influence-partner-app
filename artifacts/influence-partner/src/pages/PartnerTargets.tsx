@@ -45,6 +45,7 @@ import {
   Building2,
   Loader2,
   ChevronDown,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -154,6 +155,7 @@ interface TargetCardProps {
   onDelete: () => void;
   onStatusChange: (status: PartnerTargetStatus) => void;
   onGenerateOutreach: () => void;
+  onGenerateResearchLetters: () => void;
   isUpdating: boolean;
 }
 
@@ -164,6 +166,7 @@ function TargetCard({
   onDelete,
   onStatusChange,
   onGenerateOutreach,
+  onGenerateResearchLetters,
   isUpdating,
 }: TargetCardProps) {
   const [statusOpen, setStatusOpen] = useState(false);
@@ -255,6 +258,16 @@ function TargetCard({
           >
             <Pencil className="w-3 h-3" />
             Edit
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-7 gap-1"
+            onClick={onGenerateResearchLetters}
+            title="Generate personalised research-based outreach letters"
+          >
+            <BookOpen className="w-3 h-3" />
+            Letters
           </Button>
           <Button
             size="sm"
@@ -667,6 +680,13 @@ export default function PartnerTargets() {
     );
   };
 
+  // ── Generate research letters ─────────────────────────────────────────────
+  const handleGenerateResearchLetters = (t: ApiPartnerTarget) => {
+    const params = new URLSearchParams({ targetId: t.id });
+    if (t.productId) params.set("productId", t.productId);
+    setLocation(`/research-outreach?${params.toString()}`);
+  };
+
   // ── Generate outreach ─────────────────────────────────────────────────────
   const handleGenerateOutreach = (t: ApiPartnerTarget) => {
     const product = products.find((p) => p.id === t.productId);
@@ -846,6 +866,7 @@ export default function PartnerTargets() {
                 onDelete={() => deleteMutation.mutate(t.id)}
                 onStatusChange={(s) => handleStatusChange(t, s)}
                 onGenerateOutreach={() => handleGenerateOutreach(t)}
+                onGenerateResearchLetters={() => handleGenerateResearchLetters(t)}
                 isUpdating={updatingId === t.id}
               />
             );
