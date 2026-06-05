@@ -8,6 +8,7 @@ import {
   outreachOperationsTable,
   creatorPerformanceTable,
   type CampaignType,
+  type DeliverableType,
 } from "@workspace/db/schema";
 import { eq, inArray, or, sql } from "drizzle-orm";
 
@@ -62,6 +63,78 @@ router.get("/campaigns/metrics", async (req, res) => {
     creatorsAssigned,
     campaignRoi,
   });
+});
+
+// ─── GET /api/campaigns/eligible-targets ─────────────────────────────────────
+// Must be registered BEFORE /campaigns/:id
+
+router.get("/campaigns/eligible-targets", async (req, res) => {
+  const { productId, campaignId } = req.query as Record<string, string | undefined>;
+
+  let allTargets = await db.select().from(partnerTargetsTable);
+  if (productId) {
+    allTargets = allTargets.filter((t) => t.productId === productId);
+  }
+
+  // Exclude already-assigned targets if campaignId provided
+  const assignedTargetIds = new Set<string>();
+  if (campaignId) {
+    const existing = await db
+      .select({ targetId: campaignCreatorsTable.targetId })
+      .from(campaignCreatorsTable)
+      .where(eq(campaignCreatorsTable.campaignId, campaignId));
+    for (const e of existing) {
+      if (e.targetId) assignedTargetIds.add(e.targetId);
+    }
+  }
+
+  const targetIds = allTargets.map((t) => t.id);
+
+  // Per-target: most-recent outreach op
+  const outreachByTarget = new Map<string, typeof outreachOperationsTable.$inferSelect>();
+  if (targetIds.length > 0) {
+    const ops = await db
+      .select()
+      .from(outreachOperationsTable)
+      .where(inArray(outreachOperationsTable.targetId, targetIds));
+    for (const op of ops) {
+      if (!op.targetId) continue;
+      const prev = outreachByTarget.get(op.targetId);
+      if (!prev || op.createdAt > prev.createdAt) {
+        outreachByTarget.set(op.targetId, op);
+      }
+    }
+  }
+
+  // Per-target: performance scores
+  const perfByTarget = new Map<string, typeof creatorPerformanceTable.$inferSelect>();
+  if (targetIds.length > 0) {
+    const perfs = await db
+      .select()
+      .from(creatorPerformanceTable)
+      .where(inArray(creatorPerformanceTable.targetId, targetIds));
+    for (const p of perfs) {
+      if (p.targetId && !perfByTarget.has(p.targetId)) {
+        perfByTarget.set(p.targetId, p);
+      }
+    }
+  }
+
+  const result = allTargets
+    .filter((t) => !assignedTargetIds.has(t.id))
+    .map((t) => {
+      const op = outreachByTarget.get(t.id);
+      const perf = perfByTarget.get(t.id);
+      return {
+        ...t,
+        partnerFitScore: perf?.partnerFitScore ?? null,
+        contactReadinessScore: perf?.contactReadinessScore ?? null,
+        outreachStatus: op?.outreachStatus ?? null,
+        contactMethod: op?.contactMethod ?? null,
+      };
+    });
+
+  res.json(result);
 });
 
 // ─── GET /api/campaigns ───────────────────────────────────────────────────────
@@ -217,6 +290,19 @@ router.get("/campaigns/:id/timeline", async (req, res) => {
   events.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   res.json(events);
+});
+
+// ─── GET /api/campaigns/:id/creators ──────────────────────────────────────────
+// Must be registered BEFORE /campaigns/:id
+
+router.get("/campaigns/:id/creators", async (req, res) => {
+  const { id } = req.params;
+  const creators = await db
+    .select()
+    .from(campaignCreatorsTable)
+    .where(eq(campaignCreatorsTable.campaignId, id))
+    .orderBy(sql`${campaignCreatorsTable.createdAt} asc`);
+  res.json(creators);
 });
 
 // ─── GET /api/campaigns/:id ───────────────────────────────────────────────────
@@ -468,6 +554,8 @@ router.post("/campaigns/:id/add-creator", async (req, res) => {
     targetId,
     assignmentStatus,
     deliverables,
+    deliverableType,
+    deliverableDueDate,
     estimatedValue,
     notes,
   } = req.body as Record<string, unknown>;
@@ -486,6 +574,8 @@ router.post("/campaigns/:id/add-creator", async (req, res) => {
       assignmentStatus:
         (assignmentStatus as "identified") || "identified",
       deliverables: Array.isArray(deliverables) ? (deliverables as string[]) : [],
+      deliverableType: (toStr(deliverableType) as DeliverableType) || null,
+      deliverableDueDate: deliverableDueDate ? new Date(toStr(deliverableDueDate)) : null,
       estimatedValue: toNum(estimatedValue),
       actualValue: 0,
       notes: toStr(notes) || null,
@@ -620,6 +710,12 @@ router.patch("/campaigns/creator/:id", async (req, res) => {
     patch.deliverables = Array.isArray(body.deliverables)
       ? (body.deliverables as string[])
       : [];
+  if (body.deliverableType !== undefined)
+    patch.deliverableType = body.deliverableType as DeliverableType;
+  if (body.deliverableDueDate !== undefined)
+    patch.deliverableDueDate = body.deliverableDueDate
+      ? new Date(toStr(body.deliverableDueDate))
+      : null;
   if (body.estimatedValue !== undefined)
     patch.estimatedValue = toNum(body.estimatedValue);
   if (body.actualValue !== undefined)
@@ -648,6 +744,37 @@ router.patch("/campaigns/creator/:id", async (req, res) => {
     .where(eq(campaignsTable.id, existing.campaignId));
 
   res.json(updated);
+});
+
+// ─── DELETE /api/campaigns/creator/:id ───────────────────────────────────────
+
+router.delete("/campaigns/creator/:id", async (req, res) => {
+  const { id } = req.params;
+  const [existing] = await db
+    .select()
+    .from(campaignCreatorsTable)
+    .where(eq(campaignCreatorsTable.id, id));
+  if (!existing) {
+    res.status(404).json({ error: "Campaign creator not found" });
+    return;
+  }
+
+  await db.delete(campaignCreatorsTable).where(eq(campaignCreatorsTable.id, id));
+
+  // Sync assignedCreatorCount on parent campaign
+  const remaining = await db
+    .select()
+    .from(campaignCreatorsTable)
+    .where(eq(campaignCreatorsTable.campaignId, existing.campaignId));
+  const activeCount = remaining.filter(
+    (cc) => cc.assignmentStatus !== "declined",
+  ).length;
+  await db
+    .update(campaignsTable)
+    .set({ assignedCreatorCount: activeCount, updatedAt: new Date() })
+    .where(eq(campaignsTable.id, existing.campaignId));
+
+  res.json({ success: true });
 });
 
 export default router;

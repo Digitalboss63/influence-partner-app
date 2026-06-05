@@ -793,6 +793,14 @@ export type CampaignType =
   | "review"
   | "custom";
 
+export type DeliverableType =
+  | "video"
+  | "short"
+  | "post"
+  | "story"
+  | "review"
+  | "custom";
+
 export type AssignmentStatus =
   | "identified"
   | "contacted"
@@ -830,6 +838,8 @@ export interface ApiCampaignCreator {
   creatorName: string;
   assignmentStatus: AssignmentStatus;
   deliverables: string[];
+  deliverableType: DeliverableType | null;
+  deliverableDueDate: string | null;
   estimatedValue: number;
   actualValue: number;
   notes: string | null;
@@ -839,6 +849,31 @@ export interface ApiCampaignCreator {
   contactReadiness: number | null;
   outreachCount: number;
 }
+
+export interface ApiEligibleTarget {
+  id: string;
+  name: string;
+  company: string | null;
+  platform: string | null;
+  partnerCategory: string;
+  productId: string;
+  status: string;
+  email: string | null;
+  socialUrl: string | null;
+  partnerFitScore: number | null;
+  contactReadinessScore: number | null;
+  outreachStatus: string | null;
+  contactMethod: string | null;
+}
+
+export const fetchEligibleTargets = (params: {
+  campaignId: string;
+  productId?: string;
+}): Promise<ApiEligibleTarget[]> => {
+  const qs = new URLSearchParams({ campaignId: params.campaignId });
+  if (params.productId) qs.set("productId", params.productId);
+  return request<ApiEligibleTarget[]>(`/campaigns/eligible-targets?${qs.toString()}`);
+};
 
 export interface ApiCampaignDetail extends ApiCampaign {
   creators: ApiCampaignCreator[];
@@ -911,6 +946,8 @@ export interface AddCampaignCreatorPayload {
   targetId?: string;
   assignmentStatus?: AssignmentStatus;
   deliverables?: string[];
+  deliverableType?: DeliverableType;
+  deliverableDueDate?: string;
   estimatedValue?: number;
   notes?: string;
 }
@@ -931,6 +968,8 @@ export const updateCampaignCreator = (
       ApiCampaignCreator,
       | "assignmentStatus"
       | "deliverables"
+      | "deliverableType"
+      | "deliverableDueDate"
       | "estimatedValue"
       | "actualValue"
       | "notes"
@@ -940,6 +979,13 @@ export const updateCampaignCreator = (
   request<ApiCampaignCreator>(`/campaigns/creator/${id}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
+  });
+
+export const deleteCampaignCreator = (
+  id: string,
+): Promise<{ success: boolean }> =>
+  request<{ success: boolean }>(`/campaigns/creator/${id}`, {
+    method: "DELETE",
   });
 
 export interface BulkAddCreatorItem {

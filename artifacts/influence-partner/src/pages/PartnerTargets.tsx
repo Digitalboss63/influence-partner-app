@@ -8,7 +8,10 @@ import {
   createTarget,
   updateTarget,
   deleteTarget,
+  fetchCampaigns,
+  addCampaignCreator,
   type ApiPartnerTarget,
+  type ApiCampaign,
   type CreatePartnerTargetPayload,
 } from "@/lib/api-client";
 import { PartnerTargetStatus } from "@/types/influencePartner";
@@ -46,6 +49,7 @@ import {
   Loader2,
   ChevronDown,
   BookOpen,
+  Megaphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -156,6 +160,7 @@ interface TargetCardProps {
   onStatusChange: (status: PartnerTargetStatus) => void;
   onGenerateOutreach: () => void;
   onGenerateResearchLetters: () => void;
+  onAddToCampaign: () => void;
   isUpdating: boolean;
 }
 
@@ -167,6 +172,7 @@ function TargetCard({
   onStatusChange,
   onGenerateOutreach,
   onGenerateResearchLetters,
+  onAddToCampaign,
   isUpdating,
 }: TargetCardProps) {
   const [statusOpen, setStatusOpen] = useState(false);
@@ -277,6 +283,16 @@ function TargetCard({
             <MessageSquare className="w-3 h-3" />
             Outreach
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-7 gap-1"
+            onClick={onAddToCampaign}
+            title="Add to a campaign"
+          >
+            <Megaphone className="w-3 h-3" />
+            Campaign
+          </Button>
           <div className="relative">
             <Button
               size="sm"
@@ -323,6 +339,101 @@ function TargetCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ─── Add to Campaign Dialog ───────────────────────────────────────────────────
+
+interface AddToCampaignDialogProps {
+  target: ApiPartnerTarget;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}
+
+function AddToCampaignDialog({ target, open, onOpenChange }: AddToCampaignDialogProps) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [selectedCampaignId, setSelectedCampaignId] = useState("");
+
+  const { data: campaigns = [] } = useQuery<ApiCampaign[]>({
+    queryKey: ["campaigns"],
+    queryFn: fetchCampaigns,
+    enabled: open,
+  });
+
+  const activeCampaigns = campaigns.filter(
+    (c) => !["completed", "cancelled"].includes(c.status),
+  );
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      addCampaignCreator(selectedCampaignId, {
+        creatorName: target.name,
+        targetId: target.id,
+        assignmentStatus: "identified",
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["campaigns"] });
+      qc.invalidateQueries({ queryKey: ["eligible-targets", selectedCampaignId] });
+      toast({ title: `${target.name} added to campaign` });
+      setSelectedCampaignId("");
+      onOpenChange(false);
+    },
+    onError: (e: Error) =>
+      toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) setSelectedCampaignId("");
+        onOpenChange(v);
+      }}
+    >
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Add to Campaign</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Adding <strong>{target.name}</strong> as an identified creator.
+          </p>
+          {activeCampaigns.length === 0 ? (
+            <p className="text-sm text-muted-foreground border border-border rounded-md p-3 text-center">
+              No active campaigns. Create a campaign first.
+            </p>
+          ) : (
+            <div className="space-y-1">
+              <Label>Select Campaign</Label>
+              <Select value={selectedCampaignId} onValueChange={setSelectedCampaignId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a campaign…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeCampaigns.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => mutation.mutate()}
+            disabled={!selectedCampaignId || mutation.isPending || activeCampaigns.length === 0}
+          >
+            {mutation.isPending ? "Adding…" : "Add to Campaign"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -579,6 +690,7 @@ export default function PartnerTargets() {
 
   // ── Updater targets ──────────────────────────────────────────────────────
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [addToCampaignTarget, setAddToCampaignTarget] = useState<ApiPartnerTarget | null>(null);
 
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: targets = [], isLoading } = useQuery({
@@ -867,11 +979,21 @@ export default function PartnerTargets() {
                 onStatusChange={(s) => handleStatusChange(t, s)}
                 onGenerateOutreach={() => handleGenerateOutreach(t)}
                 onGenerateResearchLetters={() => handleGenerateResearchLetters(t)}
+                onAddToCampaign={() => setAddToCampaignTarget(t)}
                 isUpdating={updatingId === t.id}
               />
             );
           })}
         </div>
+      )}
+
+      {/* Add to Campaign dialog */}
+      {addToCampaignTarget && (
+        <AddToCampaignDialog
+          target={addToCampaignTarget}
+          open={!!addToCampaignTarget}
+          onOpenChange={(v) => { if (!v) setAddToCampaignTarget(null); }}
+        />
       )}
 
       {/* Add / Edit dialog */}

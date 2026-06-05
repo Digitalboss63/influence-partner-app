@@ -273,7 +273,69 @@ export default function HelpCampaignManagement() {
         </p>
       </Section>
 
-      <Section id="limits" title="8. Current limitations">
+      <Section id="assigning" title="8. Assigning creators">
+        <p className="text-sm text-muted-foreground">
+          Click <strong>+ Assign Creator</strong> on any campaign to open the assignment
+          dialog, or use <strong>Bulk Assign</strong> to add multiple targets at once.
+        </p>
+        <div className="space-y-2 border border-border rounded-lg p-3">
+          <KV
+            k="Eligible Targets picker"
+            v="The dialog searches your Partner Targets, excluding anyone already on the campaign. Shows Partner Fit Score and Contact Readiness Score alongside each name."
+          />
+          <KV
+            k="Deliverable Type"
+            v="Set the primary content format: Video, Short, Post, Story, Review, or Custom. Shown as a badge on each creator row."
+          />
+          <KV
+            k="Due Date"
+            v="Optional date when the deliverable is expected. Displayed with a clock icon below the creator name."
+          />
+          <KV
+            k="Deliverables"
+            v="Tag any additional content formats expected from this creator (checkboxes)."
+          />
+          <KV
+            k="Add to Campaign from Targets"
+            v="Each Target card has a Campaign button — click it to assign that target directly to any active campaign without going to the campaign page."
+          />
+        </div>
+      </Section>
+
+      <Section id="statuses" title="9. Assignment statuses">
+        <p className="text-sm text-muted-foreground">
+          Each creator moves through statuses that track the deal lifecycle:
+        </p>
+        <div className="space-y-2 border border-border rounded-lg p-3">
+          <KV k="Identified" v="Added to the campaign, not yet contacted." />
+          <KV k="Contacted" v="Initial outreach sent." />
+          <KV k="Interested" v="Creator responded positively." />
+          <KV k="Negotiating" v="Terms being discussed." />
+          <KV k="Contracted" v="Deal signed." />
+          <KV k="Completed" v="All deliverables delivered." />
+          <KV k="Declined" v="Creator passed — excluded from creator count." />
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Click the pencil icon on any creator row to update status, deliverable type,
+          due date, actual value, or notes.
+        </p>
+      </Section>
+
+      <Section id="value" title="10. Value tracking">
+        <p className="text-sm text-muted-foreground">
+          Each creator row tracks two values:
+        </p>
+        <div className="space-y-2 border border-border rounded-lg p-3">
+          <KV k="Estimated Value" v="Set when assigning — used for budget committed." />
+          <KV k="Actual Value" v="Updated after delivery — used for budget spent." />
+        </div>
+        <p className="text-sm text-muted-foreground">
+          To remove a creator from a campaign, click the trash icon on their row.
+          This updates the assigned creator count automatically.
+        </p>
+      </Section>
+
+      <Section id="limits" title="11. Current limitations">
         <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1 pl-2">
           <li>
             Outreach rollup matches by creator <em>name</em> — if the same person
@@ -285,7 +347,6 @@ export default function HelpCampaignManagement() {
             — requires values to be entered there first.
           </li>
           <li>Campaigns cannot be linked to specific pipeline stages directly.</li>
-          <li>No bulk creator import from Targets yet.</li>
         </ul>
       </Section>
 

@@ -24,6 +24,7 @@ import {
   Activity,
   MessageSquare,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,13 +55,16 @@ import {
   updateCampaign,
   addCampaignCreator,
   updateCampaignCreator,
+  deleteCampaignCreator,
   bulkAddCampaignCreators,
-  getTargets,
+  fetchEligibleTargets,
   type ApiCampaignDetail,
   type ApiCampaignCreator,
   type ApiCampaignTimelineEvent,
+  type ApiEligibleTarget,
   type CampaignStatus,
   type AssignmentStatus,
+  type DeliverableType,
 } from "@/lib/api-client";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -166,6 +170,7 @@ const TIMELINE_EVENT_COLORS: Record<string, string> = {
 
 interface AddCreatorDialogProps {
   campaignId: string;
+  productId?: string;
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onAdded: () => void;
@@ -173,22 +178,30 @@ interface AddCreatorDialogProps {
 
 function AddCreatorDialog({
   campaignId,
+  productId,
   open,
   onOpenChange,
   onAdded,
 }: AddCreatorDialogProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const { data: targets = [] } = useQuery({
-    queryKey: ["targets"],
-    queryFn: () => getTargets(),
+
+  const { data: eligibleTargets = [], isLoading: loadingTargets } = useQuery<ApiEligibleTarget[]>({
+    queryKey: ["eligible-targets", campaignId],
+    queryFn: () => fetchEligibleTargets({ campaignId, productId }),
+    enabled: open,
   });
+
+  const [targetSearch, setTargetSearch] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
 
   const [form, setForm] = useState({
     creatorName: "",
     targetId: "",
     assignmentStatus: "identified" as AssignmentStatus,
     deliverables: [] as string[],
+    deliverableType: "" as DeliverableType | "",
+    deliverableDueDate: "",
     estimatedValue: "",
     notes: "",
   });
@@ -196,13 +209,27 @@ function AddCreatorDialog({
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
-  const toggleDeliverable = (d: string) => {
-    set(
-      "deliverables",
+  const toggleDeliverable = (d: string) =>
+    set("deliverables",
       form.deliverables.includes(d)
         ? form.deliverables.filter((x) => x !== d)
         : [...form.deliverables, d],
     );
+
+  const selectedTarget = form.targetId
+    ? eligibleTargets.find((t) => t.id === form.targetId)
+    : null;
+
+  const filteredTargets = eligibleTargets.filter((t) =>
+    !targetSearch ||
+    t.name.toLowerCase().includes(targetSearch.toLowerCase()) ||
+    (t.company ?? "").toLowerCase().includes(targetSearch.toLowerCase()),
+  );
+
+  const selectTarget = (t: ApiEligibleTarget) => {
+    setForm((f) => ({ ...f, targetId: t.id, creatorName: f.creatorName || t.name }));
+    setTargetSearch("");
+    setShowDropdown(false);
   };
 
   const mutation = useMutation({
@@ -212,12 +239,15 @@ function AddCreatorDialog({
         targetId: form.targetId || undefined,
         assignmentStatus: form.assignmentStatus,
         deliverables: form.deliverables,
+        deliverableType: (form.deliverableType || undefined) as DeliverableType | undefined,
+        deliverableDueDate: form.deliverableDueDate || undefined,
         estimatedValue: form.estimatedValue ? Number(form.estimatedValue) : 0,
         notes: form.notes || undefined,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["campaign", campaignId] });
       qc.invalidateQueries({ queryKey: ["campaign-timeline", campaignId] });
+      qc.invalidateQueries({ queryKey: ["eligible-targets", campaignId] });
       toast({ title: "Creator assigned to campaign" });
       onAdded();
       setForm({
@@ -225,22 +255,108 @@ function AddCreatorDialog({
         targetId: "",
         assignmentStatus: "identified",
         deliverables: [],
+        deliverableType: "",
+        deliverableDueDate: "",
         estimatedValue: "",
         notes: "",
       });
+      setTargetSearch("");
+      setShowDropdown(false);
     },
-    onError: (e: Error) => {
-      toast({ title: "Error", description: e.message, variant: "destructive" });
-    },
+    onError: (e: Error) =>
+      toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) { setTargetSearch(""); setShowDropdown(false); }
+        onOpenChange(v);
+      }}
+    >
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Assign Creator</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
+
+          {/* Eligible Target Picker */}
+          <div className="space-y-1">
+            <Label>Select from Eligible Targets</Label>
+            {selectedTarget ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-primary/40 bg-primary/5">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{selectedTarget.name}</div>
+                  <div className="flex gap-3 mt-0.5 text-xs">
+                    {selectedTarget.company && (
+                      <span className="text-muted-foreground">{selectedTarget.company}</span>
+                    )}
+                    {selectedTarget.partnerFitScore != null && (
+                      <span className="text-violet-600">Fit: {selectedTarget.partnerFitScore}</span>
+                    )}
+                    {selectedTarget.contactReadinessScore != null && (
+                      <span className="text-teal-600">CR: {selectedTarget.contactReadinessScore}</span>
+                    )}
+                    {selectedTarget.outreachStatus && (
+                      <span className="text-blue-600 capitalize">{selectedTarget.outreachStatus}</span>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 flex-shrink-0"
+                  onClick={() => set("targetId", "")}
+                >
+                  <X className="w-3 h-3" />
+                </Button>
+              </div>
+            ) : (
+              <div className="relative">
+                <Input
+                  placeholder={loadingTargets ? "Loading…" : `Search ${eligibleTargets.length} eligible targets…`}
+                  value={targetSearch}
+                  onChange={(e) => { setTargetSearch(e.target.value); setShowDropdown(true); }}
+                  onFocus={() => setShowDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+                  className="h-8 text-sm"
+                />
+                {loadingTargets && (
+                  <Loader2 className="w-3 h-3 animate-spin absolute right-2.5 top-2.5 text-muted-foreground" />
+                )}
+                {showDropdown && filteredTargets.length > 0 && (
+                  <div className="absolute z-50 w-full top-full mt-0.5 bg-popover border border-border rounded-md shadow-md max-h-48 overflow-y-auto">
+                    {filteredTargets.slice(0, 10).map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        className="w-full px-3 py-2 text-left hover:bg-muted transition-colors flex items-start justify-between gap-2"
+                        onMouseDown={(e) => { e.preventDefault(); selectTarget(t); }}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium truncate">{t.name}</div>
+                          <div className="text-xs text-muted-foreground truncate">
+                            {[t.company, t.platform, t.status].filter(Boolean).join(" · ")}
+                          </div>
+                        </div>
+                        <div className="flex gap-2 text-xs flex-shrink-0 mt-0.5">
+                          {t.partnerFitScore != null && (
+                            <span className="text-violet-600">Fit: {t.partnerFitScore}</span>
+                          )}
+                          {t.contactReadinessScore != null && (
+                            <span className="text-teal-600">CR: {t.contactReadinessScore}</span>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Creator Name */}
           <div className="space-y-1">
             <Label>Creator Name *</Label>
             <Input
@@ -249,39 +365,13 @@ function AddCreatorDialog({
               onChange={(e) => set("creatorName", e.target.value)}
             />
           </div>
-          <div className="space-y-1">
-            <Label>Link to Target (optional)</Label>
-            <Select
-              value={form.targetId}
-              onValueChange={(v) => {
-                set("targetId", v);
-                if (v) {
-                  const t = targets.find((x) => x.id === v);
-                  if (t && !form.creatorName) set("creatorName", t.name);
-                }
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select existing target…" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">— None —</SelectItem>
-                {targets.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name}
-                    {t.company ? ` · ${t.company}` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+
+          {/* Assignment Status */}
           <div className="space-y-1">
             <Label>Assignment Status</Label>
             <Select
               value={form.assignmentStatus}
-              onValueChange={(v) =>
-                set("assignmentStatus", v as AssignmentStatus)
-              }
+              onValueChange={(v) => set("assignmentStatus", v as AssignmentStatus)}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -295,6 +385,42 @@ function AddCreatorDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {/* Deliverable Type + Due Date */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label>Deliverable Type</Label>
+              <Select
+                value={form.deliverableType || "__none__"}
+                onValueChange={(v) =>
+                  set("deliverableType", v === "__none__" ? "" : (v as DeliverableType))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="None" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— None —</SelectItem>
+                  {(["video", "short", "post", "story", "review", "custom"] as DeliverableType[]).map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t.charAt(0).toUpperCase() + t.slice(1)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Due Date</Label>
+              <Input
+                type="date"
+                value={form.deliverableDueDate}
+                onChange={(e) => set("deliverableDueDate", e.target.value)}
+                className="h-9"
+              />
+            </div>
+          </div>
+
+          {/* Deliverables */}
           <div className="space-y-1">
             <Label>Deliverables</Label>
             <div className="flex flex-wrap gap-2">
@@ -314,6 +440,8 @@ function AddCreatorDialog({
               ))}
             </div>
           </div>
+
+          {/* Estimated Value */}
           <div className="space-y-1">
             <Label>Estimated Value ($)</Label>
             <Input
@@ -324,6 +452,8 @@ function AddCreatorDialog({
               onChange={(e) => set("estimatedValue", e.target.value)}
             />
           </div>
+
+          {/* Notes */}
           <div className="space-y-1">
             <Label>Notes</Label>
             <Textarea
@@ -335,7 +465,10 @@ function AddCreatorDialog({
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="outline"
+            onClick={() => { onOpenChange(false); setTargetSearch(""); setShowDropdown(false); }}
+          >
             Cancel
           </Button>
           <Button
@@ -355,7 +488,6 @@ function AddCreatorDialog({
 interface BulkAssignDialogProps {
   campaignId: string;
   existingNames: Set<string>;
-  existingTargetIds: Set<string>;
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onAdded: () => void;
@@ -364,7 +496,6 @@ interface BulkAssignDialogProps {
 function BulkAssignDialog({
   campaignId,
   existingNames,
-  existingTargetIds,
   open,
   onOpenChange,
   onAdded,
@@ -374,16 +505,15 @@ function BulkAssignDialog({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
 
-  const { data: targets = [], isLoading: loadingTargets } = useQuery({
-    queryKey: ["targets"],
-    queryFn: () => getTargets(),
+  const { data: targets = [], isLoading: loadingTargets } = useQuery<ApiEligibleTarget[]>({
+    queryKey: ["eligible-targets-bulk", campaignId],
+    queryFn: () => fetchEligibleTargets({ campaignId }),
     enabled: open,
   });
 
   const available = targets.filter((t) => {
-    const alreadyById = existingTargetIds.has(t.id);
     const alreadyByName = existingNames.has(t.name.toLowerCase());
-    if (alreadyById || alreadyByName) return false;
+    if (alreadyByName) return false;
     if (!search) return true;
     return (
       t.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -414,6 +544,8 @@ function BulkAssignDialog({
       qc.invalidateQueries({ queryKey: ["campaign", campaignId] });
       qc.invalidateQueries({ queryKey: ["campaign-timeline", campaignId] });
       qc.invalidateQueries({ queryKey: ["campaigns"] });
+      qc.invalidateQueries({ queryKey: ["eligible-targets", campaignId] });
+      qc.invalidateQueries({ queryKey: ["eligible-targets-bulk", campaignId] });
       const msg =
         result.skipped > 0
           ? `Added ${result.added} creator${result.added !== 1 ? "s" : ""}, ${result.skipped} already assigned.`
@@ -484,10 +616,23 @@ function BulkAssignDialog({
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{t.name}</div>
                     <div className="text-xs text-muted-foreground truncate">
-                      {[t.company, t.platform, t.partnerCategory]
+                      {[t.company, t.platform]
                         .filter(Boolean)
                         .join(" · ")}
                     </div>
+                    {(t.partnerFitScore != null || t.contactReadinessScore != null) && (
+                      <div className="flex gap-3 mt-0.5 text-xs">
+                        {t.partnerFitScore != null && (
+                          <span className="text-violet-600">Fit: {t.partnerFitScore}</span>
+                        )}
+                        {t.contactReadinessScore != null && (
+                          <span className="text-teal-600">CR: {t.contactReadinessScore}</span>
+                        )}
+                        {t.contactMethod && (
+                          <span className="text-blue-600">{t.contactMethod}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <Badge
                     variant="outline"
@@ -543,16 +688,22 @@ function CreatorRow({ creator }: { creator: ApiCampaignCreator }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
-  const [status, setStatus] = useState<AssignmentStatus>(
-    creator.assignmentStatus,
-  );
+  const [status, setStatus] = useState<AssignmentStatus>(creator.assignmentStatus);
   const [actual, setActual] = useState(String(creator.actualValue ?? 0));
   const [notes, setNotes] = useState(creator.notes ?? "");
+  const [delivType, setDelivType] = useState<DeliverableType | "">(
+    creator.deliverableType ?? "",
+  );
+  const [dueDate, setDueDate] = useState(
+    creator.deliverableDueDate ? creator.deliverableDueDate.split("T")[0] : "",
+  );
 
   const mutation = useMutation({
     mutationFn: () =>
       updateCampaignCreator(creator.id, {
         assignmentStatus: status,
+        deliverableType: (delivType || undefined) as DeliverableType | undefined,
+        deliverableDueDate: dueDate || undefined,
         actualValue: Number(actual),
         notes: notes || undefined,
       }),
@@ -562,9 +713,20 @@ function CreatorRow({ creator }: { creator: ApiCampaignCreator }) {
       toast({ title: "Updated" });
       setEditing(false);
     },
-    onError: (e: Error) => {
-      toast({ title: "Error", description: e.message, variant: "destructive" });
+    onError: (e: Error) =>
+      toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteCampaignCreator(creator.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["campaign", creator.campaignId] });
+      qc.invalidateQueries({ queryKey: ["campaign-timeline", creator.campaignId] });
+      qc.invalidateQueries({ queryKey: ["eligible-targets", creator.campaignId] });
+      toast({ title: `${creator.creatorName} removed from campaign` });
     },
+    onError: (e: Error) =>
+      toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   const statusColor =
@@ -577,18 +739,12 @@ function CreatorRow({ creator }: { creator: ApiCampaignCreator }) {
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-medium">{creator.creatorName}</span>
           {!editing ? (
-            <Badge
-              variant="outline"
-              className={`text-xs px-2 py-0.5 ${statusColor}`}
-            >
+            <Badge variant="outline" className={`text-xs px-2 py-0.5 ${statusColor}`}>
               {creator.assignmentStatus.charAt(0).toUpperCase() +
                 creator.assignmentStatus.slice(1)}
             </Badge>
           ) : (
-            <Select
-              value={status}
-              onValueChange={(v) => setStatus(v as AssignmentStatus)}
-            >
+            <Select value={status} onValueChange={(v) => setStatus(v as AssignmentStatus)}>
               <SelectTrigger className="h-6 text-xs w-32">
                 <SelectValue />
               </SelectTrigger>
@@ -601,6 +757,14 @@ function CreatorRow({ creator }: { creator: ApiCampaignCreator }) {
               </SelectContent>
             </Select>
           )}
+          {creator.deliverableType && !editing && (
+            <Badge
+              variant="outline"
+              className="text-xs px-2 py-0.5 capitalize bg-amber-50 text-amber-700 border-amber-200"
+            >
+              {creator.deliverableType}
+            </Badge>
+          )}
           {creator.targetId && (
             <span className="text-xs text-muted-foreground/70" title="Linked to Target record">
               🔗
@@ -612,6 +776,17 @@ function CreatorRow({ creator }: { creator: ApiCampaignCreator }) {
             </span>
           )}
         </div>
+        {creator.deliverableDueDate && !editing && (
+          <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            Due:{" "}
+            {new Date(creator.deliverableDueDate).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })}
+          </div>
+        )}
         {creator.deliverables && creator.deliverables.length > 0 && (
           <div className="flex gap-1 flex-wrap mt-1.5">
             {creator.deliverables.map((d) => (
@@ -626,6 +801,38 @@ function CreatorRow({ creator }: { creator: ApiCampaignCreator }) {
         )}
         {editing && (
           <div className="mt-2 space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">Deliverable Type</Label>
+                <Select
+                  value={delivType || "__none__"}
+                  onValueChange={(v) =>
+                    setDelivType(v === "__none__" ? "" : (v as DeliverableType))
+                  }
+                >
+                  <SelectTrigger className="h-7 text-xs mt-0.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— None —</SelectItem>
+                    {(["video", "short", "post", "story", "review", "custom"] as DeliverableType[]).map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t.charAt(0).toUpperCase() + t.slice(1)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Due Date</Label>
+                <Input
+                  type="date"
+                  className="h-7 text-xs mt-0.5"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                />
+              </div>
+            </div>
             <div className="flex items-center gap-2">
               <Label className="text-xs whitespace-nowrap">Actual ($)</Label>
               <Input
@@ -660,14 +867,30 @@ function CreatorRow({ creator }: { creator: ApiCampaignCreator }) {
           Act: {fmt$(creator.actualValue ?? 0)}
         </div>
         {!editing ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 text-muted-foreground"
-            onClick={() => setEditing(true)}
-          >
-            <Pencil className="w-3 h-3" />
-          </Button>
+          <div className="flex gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-muted-foreground"
+              onClick={() => setEditing(true)}
+            >
+              <Pencil className="w-3 h-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-muted-foreground hover:text-destructive"
+              onClick={() => deleteMutation.mutate()}
+              disabled={deleteMutation.isPending}
+              title="Remove from campaign"
+            >
+              {deleteMutation.isPending ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Trash2 className="w-3 h-3" />
+              )}
+            </Button>
+          </div>
         ) : (
           <div className="flex gap-1">
             <Button
@@ -688,6 +911,12 @@ function CreatorRow({ creator }: { creator: ApiCampaignCreator }) {
                 setStatus(creator.assignmentStatus);
                 setActual(String(creator.actualValue ?? 0));
                 setNotes(creator.notes ?? "");
+                setDelivType(creator.deliverableType ?? "");
+                setDueDate(
+                  creator.deliverableDueDate
+                    ? creator.deliverableDueDate.split("T")[0]
+                    : "",
+                );
               }}
             >
               <X className="w-3 h-3" />
@@ -866,9 +1095,6 @@ export default function CampaignDetail() {
   // Sets for duplicate detection in dialogs
   const assignedNames = new Set(
     campaign.creators.map((cc) => cc.creatorName.toLowerCase()),
-  );
-  const assignedTargetIds = new Set(
-    campaign.creators.map((cc) => cc.targetId).filter((t): t is string => !!t),
   );
 
   return (
@@ -1294,6 +1520,7 @@ export default function CampaignDetail() {
 
       <AddCreatorDialog
         campaignId={id}
+        productId={campaign?.productId ?? undefined}
         open={addCreatorOpen}
         onOpenChange={setAddCreatorOpen}
         onAdded={() => setAddCreatorOpen(false)}
@@ -1302,7 +1529,6 @@ export default function CampaignDetail() {
       <BulkAssignDialog
         campaignId={id}
         existingNames={assignedNames}
-        existingTargetIds={assignedTargetIds}
         open={bulkAssignOpen}
         onOpenChange={setBulkAssignOpen}
         onAdded={() => setBulkAssignOpen(false)}

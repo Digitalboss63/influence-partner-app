@@ -656,6 +656,15 @@ export const assignmentStatusEnum = pgEnum("assignment_status", [
   "declined",
 ]);
 
+export const deliverableTypeEnum = pgEnum("deliverable_type", [
+  "video",
+  "short",
+  "post",
+  "story",
+  "review",
+  "custom",
+]);
+
 export const campaignsTable = pgTable("campaigns", {
   id: uuid("id").primaryKey().defaultRandom(),
   productId: uuid("product_id").references(() => productsTable.id, {
@@ -684,6 +693,7 @@ export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
 export type Campaign = typeof campaignsTable.$inferSelect;
 export type CampaignStatus = typeof campaignStatusEnum.enumValues[number];
 export type CampaignType = typeof campaignTypeEnum.enumValues[number];
+export type DeliverableType = typeof deliverableTypeEnum.enumValues[number];
 
 export const campaignCreatorsTable = pgTable("campaign_creators", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -698,6 +708,8 @@ export const campaignCreatorsTable = pgTable("campaign_creators", {
     .notNull()
     .default("identified"),
   deliverables: jsonb("deliverables").$type<string[]>().default([]),
+  deliverableType: deliverableTypeEnum("deliverable_type"),
+  deliverableDueDate: timestamp("deliverable_due_date"),
   estimatedValue: integer("estimated_value").default(0),
   actualValue: integer("actual_value").default(0),
   notes: text("notes"),
