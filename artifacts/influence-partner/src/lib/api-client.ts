@@ -573,6 +573,114 @@ export const updateProductRevenue = (payload: {
     body: JSON.stringify(payload),
   });
 
+// ─── Executive Reports ────────────────────────────────────────────────────────
+
+export type GoalType =
+  | "creators_contacted"
+  | "replies"
+  | "interested"
+  | "negotiations"
+  | "conversions"
+  | "estimated_revenue"
+  | "actual_revenue";
+
+export type GoalStatus = "on_track" | "behind" | "achieved";
+
+export interface ApiReportsSummary {
+  totalOps: number;
+  sent: number;
+  replied: number;
+  interested: number;
+  negotiations: number;
+  conversions: number;
+  replyRate: number;
+  interestedRate: number;
+  conversionRate: number;
+  totalEstimatedRevenue: number;
+  totalActualRevenue: number;
+  productCount: number;
+  activeCreators: number;
+  periodComparison: {
+    recentSent: number;
+    priorSent: number;
+    recentReplied: number;
+    priorReplied: number;
+    recentConversions: number;
+    priorConversions: number;
+    replyRateDelta: number | null;
+    convRateDelta: number | null;
+  };
+}
+
+export interface ApiTrendPoint {
+  period: string;
+  label: string;
+  contacted: number;
+  replied: number;
+  interested: number;
+  converted: number;
+  total: number;
+}
+
+export interface ApiReportsInsight {
+  type: string;
+  text: string;
+  priority: "high" | "medium" | "low";
+}
+
+export interface ApiGoal {
+  id: string;
+  productId: string | null;
+  goalType: GoalType;
+  targetValue: number;
+  currentValue: number;
+  startDate: string | null;
+  endDate: string | null;
+  status: GoalStatus;
+  pctComplete: number;
+  remaining: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getReportsSummary = (productId?: string): Promise<ApiReportsSummary> => {
+  const qs = productId ? `?productId=${productId}` : "";
+  return request<ApiReportsSummary>(`/reports/summary${qs}`);
+};
+
+export const getReportsTrends = (productId?: string, months?: number): Promise<ApiTrendPoint[]> => {
+  const params = new URLSearchParams();
+  if (productId) params.set("productId", productId);
+  if (months) params.set("months", String(months));
+  const qs = params.toString() ? `?${params}` : "";
+  return request<ApiTrendPoint[]>(`/reports/trends${qs}`);
+};
+
+export const getReportsInsights = (productId?: string): Promise<ApiReportsInsight[]> => {
+  const qs = productId ? `?productId=${productId}` : "";
+  return request<ApiReportsInsight[]>(`/reports/insights${qs}`);
+};
+
+export const getGoals = (productId?: string): Promise<ApiGoal[]> => {
+  const qs = productId ? `?productId=${productId}` : "";
+  return request<ApiGoal[]>(`/reports/goals${qs}`);
+};
+
+export const createGoal = (payload: {
+  goalType: GoalType;
+  targetValue: number;
+  productId?: string;
+  startDate?: string;
+  endDate?: string;
+}): Promise<ApiGoal> =>
+  request<ApiGoal>("/reports/goals", { method: "POST", body: JSON.stringify(payload) });
+
+export const updateGoal = (id: string, payload: { targetValue?: number; startDate?: string | null; endDate?: string | null }): Promise<ApiGoal> =>
+  request<ApiGoal>(`/reports/goals/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+
+export const deleteGoal = (id: string): Promise<{ deleted: boolean; id: string }> =>
+  request<{ deleted: boolean; id: string }>(`/reports/goals/${id}`, { method: "DELETE" });
+
 // ─── Contact Intelligence ─────────────────────────────────────────────────────
 
 export type VerificationStatus = "verified" | "likely" | "unverified" | "missing";

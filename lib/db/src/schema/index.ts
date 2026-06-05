@@ -513,6 +513,45 @@ export const campaignPerformanceTable = pgTable("campaign_performance", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const goalTypeEnum = pgEnum("goal_type", [
+  "creators_contacted",
+  "replies",
+  "interested",
+  "negotiations",
+  "conversions",
+  "estimated_revenue",
+  "actual_revenue",
+]);
+
+export const goalStatusEnum = pgEnum("goal_status", [
+  "on_track",
+  "behind",
+  "achieved",
+]);
+
+export const performanceGoalsTable = pgTable("performance_goals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  productId: uuid("product_id").references(() => productsTable.id, {
+    onDelete: "cascade",
+  }),
+  goalType: goalTypeEnum("goal_type").notNull(),
+  targetValue: real("target_value").notNull(),
+  currentValue: real("current_value").notNull().default(0),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  status: goalStatusEnum("status").notNull().default("on_track"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertPerformanceGoalSchema = createInsertSchema(
+  performanceGoalsTable,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertPerformanceGoal = z.infer<typeof insertPerformanceGoalSchema>;
+export type PerformanceGoal = typeof performanceGoalsTable.$inferSelect;
+export type GoalType = typeof goalTypeEnum.enumValues[number];
+export type GoalStatus = typeof goalStatusEnum.enumValues[number];
+
 export const insertCreatorPerformanceSchema = createInsertSchema(
   creatorPerformanceTable,
 ).omit({ id: true, createdAt: true, updatedAt: true });

@@ -11,6 +11,7 @@ import qualificationRouter from "./qualification";
 import contactIntelligenceRouter from "./contact-intelligence";
 import outreachOperationsRouter from "./outreach-operations";
 import performanceRouter from "./performance";
+import reportsRouter from "./reports";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(qualificationRouter);
 router.use(contactIntelligenceRouter);
 router.use(outreachOperationsRouter);
 router.use(performanceRouter);
+router.use(reportsRouter);
 
 export default router;

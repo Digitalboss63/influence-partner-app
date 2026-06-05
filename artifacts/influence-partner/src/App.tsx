@@ -23,6 +23,8 @@ import OutreachOperations from "@/pages/OutreachOperations";
 import HelpOutreachOperations from "@/pages/HelpOutreachOperations";
 import PerformanceIntelligence from "@/pages/PerformanceIntelligence";
 import HelpPerformanceIntelligence from "@/pages/HelpPerformanceIntelligence";
+import ExecutiveReports from "@/pages/ExecutiveReports";
+import HelpExecutiveReporting from "@/pages/HelpExecutiveReporting";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -48,8 +50,10 @@ function Router() {
         <Route path="/help/contact-intelligence" component={HelpContactIntelligence} />
         <Route path="/outreach-operations" component={OutreachOperations} />
         <Route path="/help/outreach-operations" component={HelpOutreachOperations} />
+        <Route path="/performance/reports" component={ExecutiveReports} />
         <Route path="/performance" component={PerformanceIntelligence} />
         <Route path="/help/performance-intelligence" component={HelpPerformanceIntelligence} />
+        <Route path="/help/executive-reporting" component={HelpExecutiveReporting} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

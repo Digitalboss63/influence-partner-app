@@ -17,6 +17,7 @@ import {
   ContactRound,
   Send,
   TrendingUp,
+  FileBarChart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -33,6 +34,7 @@ const navItems = [
   { label: "Outreach", href: "/outreach", icon: MessageSquare },
   { label: "Outreach Operations", href: "/outreach-operations", icon: Send },
   { label: "Performance", href: "/performance", icon: TrendingUp },
+  { label: "Executive Reports", href: "/performance/reports", icon: FileBarChart },
   { label: "Pipeline", href: "/pipeline", icon: KanbanSquare },
 ];
 
