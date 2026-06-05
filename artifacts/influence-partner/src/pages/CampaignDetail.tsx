@@ -968,6 +968,14 @@ export default function CampaignDetail() {
             </div>
 
             <p className="text-sm text-muted-foreground">{campaign.objective}</p>
+            {campaign.campaignType && (
+              <p className="text-xs text-muted-foreground">
+                Type:{" "}
+                <span className="capitalize font-medium text-foreground">
+                  {campaign.campaignType}
+                </span>
+              </p>
+            )}
             {campaign.description && (
               <p className="text-sm">{campaign.description}</p>
             )}

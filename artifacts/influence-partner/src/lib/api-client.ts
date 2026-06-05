@@ -785,6 +785,14 @@ export type CampaignStatus =
   | "completed"
   | "cancelled";
 
+export type CampaignType =
+  | "awareness"
+  | "affiliate"
+  | "sponsorship"
+  | "launch"
+  | "review"
+  | "custom";
+
 export type AssignmentStatus =
   | "identified"
   | "contacted"
@@ -801,6 +809,7 @@ export interface ApiCampaign {
   name: string;
   description: string | null;
   objective: string;
+  campaignType: CampaignType | null;
   budget: number;
   targetCreatorCount: number;
   assignedCreatorCount: number;
@@ -868,6 +877,7 @@ export interface CreateCampaignPayload {
   name: string;
   productId?: string;
   objective: string;
+  campaignType?: CampaignType;
   budget?: number;
   targetCreatorCount?: number;
   description?: string;

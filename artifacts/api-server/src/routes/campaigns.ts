@@ -7,6 +7,7 @@ import {
   partnerTargetsTable,
   outreachOperationsTable,
   creatorPerformanceTable,
+  type CampaignType,
 } from "@workspace/db/schema";
 import { eq, inArray, or, sql } from "drizzle-orm";
 
@@ -355,7 +356,7 @@ router.get("/campaigns/:id", async (req, res) => {
 // ─── POST /api/campaigns ──────────────────────────────────────────────────────
 
 router.post("/campaigns", async (req, res) => {
-  const { name, productId, objective, budget, targetCreatorCount, description, startDate, endDate, status } =
+  const { name, productId, objective, campaignType, budget, targetCreatorCount, description, startDate, endDate, status } =
     req.body as Record<string, unknown>;
 
   if (!toStr(name)) {
@@ -373,6 +374,7 @@ router.post("/campaigns", async (req, res) => {
       name: toStr(name),
       productId: toStr(productId) || null,
       objective: toStr(objective),
+      campaignType: (toStr(campaignType) as CampaignType) || "custom",
       budget: toNum(budget),
       targetCreatorCount: toNum(targetCreatorCount),
       description: toStr(description) || null,
@@ -408,6 +410,8 @@ router.patch("/campaigns/:id", async (req, res) => {
   if (body.objective !== undefined) patch.objective = toStr(body.objective);
   if (body.description !== undefined)
     patch.description = toStr(body.description) || null;
+  if (body.campaignType !== undefined)
+    patch.campaignType = body.campaignType as CampaignType;
   if (body.budget !== undefined) patch.budget = toNum(body.budget);
   if (body.targetCreatorCount !== undefined)
     patch.targetCreatorCount = toNum(body.targetCreatorCount);

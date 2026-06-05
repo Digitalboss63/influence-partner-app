@@ -1,49 +1,118 @@
 # Phase 6A — Campaign Management
 
-**Commit base:** 3d75f860 (Phase 5D Executive Reporting)
+## Overview
 
-## Goal
+Full campaign management lifecycle for the Influence Partner App. Campaigns are the primary coordination unit for activating influencer partnerships — tying a product to a set of creators, a budget, and time-bound goals.
 
-Allow users to create, manage, and track influencer campaigns as an orchestration layer over the existing Discovery → Qualification → Targets → Outreach → Pipeline → Performance → Reporting workflow.
+---
 
-## DB Changes
+## Features
 
-### New enums
-- `campaign_status`: planning | active | paused | completed | cancelled
-- `assignment_status`: identified | contacted | interested | negotiating | contracted | completed | declined
+### Campaign List (`/campaigns`)
+- Summary metric cards: total campaigns, active campaigns, total budget, total creators assigned
+- Per-campaign cards showing name, linked product, status badge, campaign type badge, budget vs committed vs spent, creator count, and date range
+- **Campaign Type badge** displayed for all non-`custom` types (awareness, affiliate, sponsorship, launch, review)
+- Filter bar: search by name, filter by status and/or product
+- "Create Campaign" dialog with all fields including campaign type selector
 
-### New tables
-- `campaigns`: id, product_id, name, description, objective, budget, target_creator_count, assigned_creator_count, status, start_date, end_date, created_at, updated_at
-- `campaign_creators`: id, campaign_id, target_id, creator_name, assignment_status, deliverables (jsonb string[]), estimated_value, actual_value, notes, created_at, updated_at
+### Campaign Detail (`/campaigns/:id`)
+- Header with editable status dropdown, quick-access action buttons
+- Objective, campaign type, description, budget/creator metrics
+- Creator assignments table with assignment status tracking
+- Timeline view (milestone cards)
+- Budget breakdown panel
+- Performance summary card
+
+### Create Campaign Dialog
+Fields:
+- **Name** (required)
+- **Objective** (required)
+- **Product** (optional link to a product)
+- **Campaign Type** — `awareness | affiliate | sponsorship | launch | review | custom` (defaults to `custom`)
+- **Budget** ($)
+- **Target Creator Count**
+- **Description**
+- **Start Date / End Date**
+
+---
+
+## Campaign Types
+
+| Type | Use Case |
+|------|----------|
+| `awareness` | Top-of-funnel brand reach campaigns |
+| `affiliate` | Commission-driven performance campaigns |
+| `sponsorship` | Paid placement / dedicated sponsored content |
+| `launch` | New product or feature launch coordination |
+| `review` | Product review seeding |
+| `custom` | Catch-all for custom arrangements |
+
+---
+
+## Data Model
+
+**Table: `campaigns`**
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | UUID | PK |
+| `product_id` | UUID | FK → products |
+| `name` | text | required |
+| `description` | text | optional |
+| `objective` | text | required |
+| `campaign_type` | enum | `awareness\|affiliate\|sponsorship\|launch\|review\|custom`, default `custom` |
+| `budget` | integer | cents or dollars |
+| `target_creator_count` | integer | |
+| `assigned_creator_count` | integer | maintained by API |
+| `status` | enum | `planning\|active\|paused\|completed\|cancelled` |
+| `start_date` | timestamp | optional |
+| `end_date` | timestamp | optional |
+| `created_at` | timestamp | |
+| `updated_at` | timestamp | |
+
+**Table: `campaign_creators`**
+
+Joins campaigns ↔ partner targets with assignment status, budget allocation, and performance tracking.
+
+---
 
 ## API Routes
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | /api/campaigns/metrics | Aggregate KPIs (before /:id to avoid path clash) |
-| GET | /api/campaigns | List all campaigns with budget/creator rollups |
-| GET | /api/campaigns/:id | Campaign detail with creators, outreach rollup, revenue |
-| POST | /api/campaigns | Create campaign |
-| PATCH | /api/campaigns/:id | Update campaign |
-| DELETE | /api/campaigns/:id | Delete campaign (cascades creators) |
-| POST | /api/campaigns/:id/add-creator | Assign creator to campaign |
-| PATCH | /api/campaigns/creator/:id | Update campaign creator (status, deliverables, values) |
+| `GET` | `/api/campaigns` | List all campaigns (with product name join, budget/creator aggregates) |
+| `POST` | `/api/campaigns` | Create campaign |
+| `GET` | `/api/campaigns/metrics` | Aggregate metrics (total, active, budget, creators) |
+| `GET` | `/api/campaigns/:id` | Single campaign detail |
+| `PATCH` | `/api/campaigns/:id` | Update campaign fields |
+| `DELETE` | `/api/campaigns/:id` | Delete campaign |
+| `GET` | `/api/campaigns/:id/timeline` | Timeline milestones for a campaign |
+| `POST` | `/api/campaigns/:id/creators/bulk` | Bulk-add creators to campaign |
 
-## UI Routes
+All campaign create/update routes accept `campaignType` in the request body.
 
-| Path | Component | Description |
-|------|-----------|-------------|
-| /campaigns | Campaigns | List page with KPI tiles + campaign cards |
-| /campaigns/:id | CampaignDetail | Detail with 7 sections |
-| /help/campaign-management | HelpCampaignManagement | How-it-works guide |
+---
 
-## Key Decisions
+## Frontend Integration
 
-- `GET /api/campaigns/metrics` registered before `GET /api/campaigns/:id` — Express route ordering prevents "metrics" being treated as an :id
-- `assignedCreatorCount` on campaigns is synced server-side after every add-creator or update-creator mutation
-- Outreach rollup in detail view queries `outreach_operations` by creator name (existing table, no schema change)
-- Revenue in detail view queries `creator_performance.actual_revenue` by creator name
-- Budget committed = sum of estimated_value for non-declined creators; budget used = sum of actual_value
-- Deliverables stored as `jsonb string[]` — flexible for Video, Short, Post, Story, Review, Custom
-- Campaign ROI = (budget_used / budget_committed) * 100 when committed > 0
-- Nav item "Campaigns" added after Dashboard and Products (position 3) — campaign is the workflow entry point
+- `src/pages/Campaigns.tsx` — list, filter, create dialog with campaign type
+- `src/pages/CampaignDetail.tsx` — detail view with type display
+- `src/lib/api-client.ts` — `CampaignType` union, `ApiCampaign.campaignType`, `CreateCampaignPayload.campaignType`
+- `src/pages/HelpCampaignManagement.tsx` — contextual help at `/help/campaign-management`
+- Route registered in `App.tsx`; nav entry in `Layout.tsx`
+
+---
+
+## Help Page
+
+`/help/campaign-management` covers:
+
+1. What is a campaign?
+2. Campaign lifecycle (planning → active → completed)
+3. Adding creators
+4. Setting deliverables
+5. Budget tracking
+6. Measuring success
+7. Campaign types
+8. Best practices
+

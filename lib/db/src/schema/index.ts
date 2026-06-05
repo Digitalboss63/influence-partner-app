@@ -637,6 +637,15 @@ export const campaignStatusEnum = pgEnum("campaign_status", [
   "cancelled",
 ]);
 
+export const campaignTypeEnum = pgEnum("campaign_type", [
+  "awareness",
+  "affiliate",
+  "sponsorship",
+  "launch",
+  "review",
+  "custom",
+]);
+
 export const assignmentStatusEnum = pgEnum("assignment_status", [
   "identified",
   "contacted",
@@ -655,6 +664,7 @@ export const campaignsTable = pgTable("campaigns", {
   name: text("name").notNull(),
   description: text("description"),
   objective: text("objective").notNull(),
+  campaignType: campaignTypeEnum("campaign_type").default("custom"),
   budget: integer("budget").notNull().default(0),
   targetCreatorCount: integer("target_creator_count").notNull().default(0),
   assignedCreatorCount: integer("assigned_creator_count").notNull().default(0),
@@ -673,6 +683,7 @@ export const insertCampaignSchema = createInsertSchema(campaignsTable).omit({
 export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
 export type Campaign = typeof campaignsTable.$inferSelect;
 export type CampaignStatus = typeof campaignStatusEnum.enumValues[number];
+export type CampaignType = typeof campaignTypeEnum.enumValues[number];
 
 export const campaignCreatorsTable = pgTable("campaign_creators", {
   id: uuid("id").primaryKey().defaultRandom(),

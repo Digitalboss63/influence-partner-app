@@ -48,6 +48,7 @@ import {
   getProducts,
   type ApiCampaign,
   type CampaignStatus,
+  type CampaignType,
 } from "@/lib/api-client";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -118,6 +119,7 @@ function CreateCampaignDialog({ open, onOpenChange, onCreated }: CreateDialogPro
     name: "",
     productId: "",
     objective: "",
+    campaignType: "custom" as CampaignType,
     budget: "",
     targetCreatorCount: "",
     description: "",
@@ -136,6 +138,7 @@ function CreateCampaignDialog({ open, onOpenChange, onCreated }: CreateDialogPro
         name: "",
         productId: "",
         objective: "",
+        campaignType: "custom",
         budget: "",
         targetCreatorCount: "",
         description: "",
@@ -186,6 +189,21 @@ function CreateCampaignDialog({ open, onOpenChange, onCreated }: CreateDialogPro
                   {products.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Campaign Type</Label>
+              <Select value={form.campaignType} onValueChange={(v) => set("campaignType", v as CampaignType)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(["awareness","affiliate","sponsorship","launch","review","custom"] as CampaignType[]).map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t.charAt(0).toUpperCase() + t.slice(1)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -248,6 +266,7 @@ function CreateCampaignDialog({ open, onOpenChange, onCreated }: CreateDialogPro
                 name: form.name,
                 productId: form.productId || undefined,
                 objective: form.objective,
+                campaignType: form.campaignType,
                 budget: form.budget ? Number(form.budget) : undefined,
                 targetCreatorCount: form.targetCreatorCount
                   ? Number(form.targetCreatorCount)
@@ -308,7 +327,12 @@ function CampaignCard({
               </p>
             )}
           </div>
-          <div className="flex items-center gap-1 flex-shrink-0">
+          <div className="flex items-center gap-1 flex-shrink-0 flex-wrap justify-end">
+            {campaign.campaignType && campaign.campaignType !== "custom" && (
+              <Badge variant="outline" className="text-xs px-2 py-0.5 capitalize">
+                {campaign.campaignType}
+              </Badge>
+            )}
             <Badge
               variant="outline"
               className={`text-xs px-2 py-0.5 flex items-center gap-1 ${cfg.color}`}
