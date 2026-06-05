@@ -6,6 +6,7 @@ import {
   partnerProspectsTable,
   partnerTargetsTable,
   productsTable,
+  qualificationFeedbackTable,
   insertPartnerQualificationSchema,
   type QualificationStatus,
 } from "@workspace/db";
@@ -418,6 +419,125 @@ router.get("/qualification/metrics", async (req, res) => {
     approved,
     targets: targetsResult?.total ?? 0,
   });
+});
+
+// ─── POST /qualification/bulk-action ─────────────────────────────────────────
+// Bulk approve / reject / star / archive a set of qualification IDs.
+
+router.post("/qualification/bulk-action", async (req, res) => {
+  const { ids, action } = req.body as {
+    ids?: string[];
+    action?: string;
+  };
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    res.status(400).json({ error: "ids must be a non-empty array" });
+    return;
+  }
+  const validActions = ["approve", "reject", "star", "archive"];
+  if (!action || !validActions.includes(action)) {
+    res.status(400).json({ error: `action must be one of: ${validActions.join(", ")}` });
+    return;
+  }
+
+  let processed = 0;
+
+  if (action === "approve") {
+    for (const qualId of ids) {
+      const [qual] = await db
+        .select()
+        .from(partnerQualificationsTable)
+        .where(eq(partnerQualificationsTable.id, qualId))
+        .limit(1);
+      if (!qual) continue;
+
+      const [prospect] = await db
+        .select()
+        .from(partnerProspectsTable)
+        .where(eq(partnerProspectsTable.id, qual.prospectId))
+        .limit(1);
+      if (!prospect) continue;
+
+      await db
+        .insert(partnerTargetsTable)
+        .values({
+          productId: qual.productId,
+          partnerCategory: prospect.partnerCategory ?? "YouTuber",
+          name: prospect.name,
+          company: prospect.company,
+          platform: prospect.platform,
+          website: prospect.website,
+          email: qual.contactEmail ?? prospect.email,
+          socialUrl: prospect.socialUrl,
+          notes: prospect.notes,
+          status: "Not Contacted",
+        })
+        .onConflictDoNothing();
+
+      await db
+        .update(partnerQualificationsTable)
+        .set({ qualificationStatus: "qualified", updatedAt: new Date() })
+        .where(eq(partnerQualificationsTable.id, qualId));
+
+      await db
+        .update(partnerProspectsTable)
+        .set({ status: "Added To Targets", updatedAt: new Date() })
+        .where(eq(partnerProspectsTable.id, qual.prospectId));
+
+      processed++;
+    }
+  } else {
+    const statusMap: Record<string, QualificationStatus> = {
+      reject: "rejected",
+      star: "starred",
+      archive: "archived",
+    };
+    const newStatus = statusMap[action] as QualificationStatus;
+    for (const qualId of ids) {
+      await db
+        .update(partnerQualificationsTable)
+        .set({ qualificationStatus: newStatus, updatedAt: new Date() })
+        .where(eq(partnerQualificationsTable.id, qualId));
+      processed++;
+    }
+  }
+
+  res.json({ processed });
+});
+
+// ─── POST /qualification/:id/feedback ────────────────────────────────────────
+// Store a user feedback signal for a qualification score.
+
+router.post("/qualification/:id/feedback", async (req, res) => {
+  const { id } = req.params;
+  const { feedbackType } = req.body as { feedbackType?: string };
+
+  const validFeedback = ["accurate", "too_high", "too_low"];
+  if (!feedbackType || !validFeedback.includes(feedbackType)) {
+    res.status(400).json({ error: `feedbackType must be one of: ${validFeedback.join(", ")}` });
+    return;
+  }
+
+  const [qual] = await db
+    .select({ id: partnerQualificationsTable.id })
+    .from(partnerQualificationsTable)
+    .where(eq(partnerQualificationsTable.id, id))
+    .limit(1);
+
+  if (!qual) {
+    res.status(404).json({ error: "Qualification not found" });
+    return;
+  }
+
+  const [feedback] = await db
+    .insert(qualificationFeedbackTable)
+    .values({
+      qualificationId: id,
+      feedbackType: feedbackType as "accurate" | "too_high" | "too_low",
+    })
+    .returning();
+
+  res.json({ id: feedback!.id });
 });
 
 export default router;

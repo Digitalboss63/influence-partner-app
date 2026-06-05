@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAppContext } from "@/context/AppContext";
-import { getTargets, getProspects } from "@/lib/api-client";
+import { getTargets, getProspects, getQualificationMetrics, type ApiQualMetrics } from "@/lib/api-client";
 import { getYtStats } from "@/lib/ytStats";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,8 @@ import {
   Crosshair,
   Telescope,
   Youtube,
+  Filter,
+  ArrowDown,
 } from "lucide-react";
 import { ProductIntelligencePreview } from "@/components/ProductIntelligenceSummary";
 import {
@@ -98,6 +100,13 @@ export default function Dashboard() {
   const { data: prospects = [] } = useQuery({
     queryKey: ["prospects"],
     queryFn: () => getProspects(),
+  });
+
+  const { data: qualMetrics } = useQuery<ApiQualMetrics>({
+    queryKey: ["qualification-metrics", selectedProductId],
+    queryFn: () => getQualificationMetrics(selectedProductId!),
+    enabled: !!selectedProductId,
+    staleTime: 30_000,
   });
 
   useEffect(() => {
@@ -836,6 +845,87 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Funnel Health Card */}
+      <Card data-testid="card-funnel-health">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Filter className="w-4 h-4 text-primary" />
+            Funnel Health
+            <span className="text-xs font-normal text-muted-foreground ml-1">Discovery → Pipeline</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-4 pb-5">
+          {(() => {
+            const funnelSteps = [
+              {
+                label: "Discovered",
+                count: prospects.length,
+                color: "bg-violet-500",
+                path: "/youtube-discovery",
+              },
+              {
+                label: "Qualified",
+                count: qualMetrics?.scored ?? 0,
+                color: "bg-blue-500",
+                path: "/qualification",
+              },
+              {
+                label: "Targeted",
+                count: targets.length,
+                color: "bg-sky-500",
+                path: "/targets",
+              },
+              {
+                label: "Outreach Sent",
+                count: savedPlans.length,
+                color: "bg-amber-500",
+                path: "/outreach",
+              },
+              {
+                label: "In Pipeline",
+                count: creators.filter((c) => c.pipelineStage !== "New").length,
+                color: "bg-emerald-500",
+                path: "/pipeline",
+              },
+            ];
+
+            const pct = (a: number, b: number) =>
+              b > 0 ? `${Math.round((a / b) * 100)}%` : "—";
+
+            return (
+              <div className="flex items-stretch gap-0 overflow-x-auto">
+                {funnelSteps.map((step, idx) => {
+                  const prev = funnelSteps[idx - 1];
+                  const conversion = prev ? pct(step.count, prev.count) : null;
+                  return (
+                    <div key={step.label} className="flex items-center min-w-0">
+                      {conversion !== null && (
+                        <div className="flex flex-col items-center px-2 flex-shrink-0">
+                          <ArrowDown className="w-3.5 h-3.5 text-muted-foreground/40 rotate-[-90deg]" />
+                          <span className="text-xs text-muted-foreground font-medium mt-0.5 whitespace-nowrap">
+                            {conversion}
+                          </span>
+                        </div>
+                      )}
+                      <button
+                        className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-border hover:bg-muted/40 transition-colors min-w-[90px] group"
+                        onClick={() => setLocation(step.path)}
+                      >
+                        <div className={`w-8 h-1.5 rounded-full ${step.color} opacity-80 group-hover:opacity-100`} />
+                        <span className={`text-2xl font-bold ${step.count > 0 ? "text-foreground" : "text-muted-foreground/40"}`}>
+                          {step.count}
+                        </span>
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">{step.label}</span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </CardContent>
+      </Card>
     </div>
   );
 }

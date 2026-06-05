@@ -330,6 +330,26 @@ export const approveQualification = (
 export const getQualificationMetrics = (productId: string): Promise<ApiQualMetrics> =>
   request<ApiQualMetrics>(`/qualification/metrics?productId=${productId}`);
 
+export type FeedbackType = "accurate" | "too_high" | "too_low";
+
+export const submitQualificationFeedback = (
+  qualId: string,
+  feedbackType: FeedbackType,
+): Promise<{ id: string }> =>
+  request<{ id: string }>(`/qualification/${qualId}/feedback`, {
+    method: "POST",
+    body: JSON.stringify({ feedbackType }),
+  });
+
+export const bulkQualificationAction = (
+  ids: string[],
+  action: "approve" | "reject" | "star" | "archive",
+): Promise<{ processed: number }> =>
+  request<{ processed: number }>(`/qualification/bulk-action`, {
+    method: "POST",
+    body: JSON.stringify({ ids, action }),
+  });
+
 // ─── YouTube Discovery ────────────────────────────────────────────────────────
 
 export interface YouTubeChannel {

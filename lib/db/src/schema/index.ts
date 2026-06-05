@@ -406,3 +406,27 @@ export type InsertPartnerQualification = z.infer<typeof insertPartnerQualificati
 export type PartnerQualification = typeof partnerQualificationsTable.$inferSelect;
 export type QualificationStatus = typeof qualificationStatusEnum.enumValues[number];
 export type QualificationLabel = typeof qualificationLabelEnum.enumValues[number];
+
+// ─── Qualification Feedback ───────────────────────────────────────────────────
+
+export const feedbackTypeEnum = pgEnum("feedback_type", [
+  "accurate",
+  "too_high",
+  "too_low",
+]);
+
+export const qualificationFeedbackTable = pgTable("qualification_feedback", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  qualificationId: uuid("qualification_id")
+    .notNull()
+    .references(() => partnerQualificationsTable.id, { onDelete: "cascade" }),
+  feedbackType: feedbackTypeEnum("feedback_type").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertQualificationFeedbackSchema = createInsertSchema(
+  qualificationFeedbackTable,
+).omit({ id: true, createdAt: true });
+export type InsertQualificationFeedback = z.infer<typeof insertQualificationFeedbackSchema>;
+export type QualificationFeedback = typeof qualificationFeedbackTable.$inferSelect;
+export type FeedbackType = typeof feedbackTypeEnum.enumValues[number];

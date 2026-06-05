@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -15,11 +15,14 @@ import {
   updateQualificationStatus,
   approveQualification,
   getQualificationMetrics,
+  submitQualificationFeedback,
+  bulkQualificationAction,
   type ApiQueueItem,
   type ApiQualification,
   type QualificationStatus,
   type QualificationLabel,
   type ScoreReasons,
+  type FeedbackType,
 } from "@/lib/api-client";
 import {
   Target,
@@ -41,18 +44,33 @@ import {
   ArrowRight,
   RefreshCw,
   ExternalLink,
+  Download,
+  SlidersHorizontal,
+  Calculator,
+  ThumbsUp,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type TabKey = "all" | QualificationLabel | "starred" | "rejected";
+type SortKey = "score_desc" | "score_asc" | "response_prob" | "audience_match" | "most_recent";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const PILLAR_HELP: Record<string, { label: string; weight: string; tooltip: string; icon: React.ComponentType<{ className?: string }>; reasonsKey: keyof ScoreReasons }> = {
+const PILLAR_HELP: Record<string, {
+  label: string;
+  weight: string;
+  weightNum: number;
+  tooltip: string;
+  icon: React.ComponentType<{ className?: string }>;
+  reasonsKey: keyof ScoreReasons;
+}> = {
   audienceMatchScore: {
     label: "Audience Match",
     weight: "25%",
+    weightNum: 0.25,
     tooltip: "Measures how closely this creator's audience aligns with the customers your product is trying to reach.",
     icon: Users,
     reasonsKey: "audienceMatch",
@@ -60,6 +78,7 @@ const PILLAR_HELP: Record<string, { label: string; weight: string; tooltip: stri
   brandSafetyScore: {
     label: "Brand Safety",
     weight: "20%",
+    weightNum: 0.20,
     tooltip: "Checks whether this creator appears safe for your brand to partner with.",
     icon: Shield,
     reasonsKey: "brandSafety",
@@ -67,6 +86,7 @@ const PILLAR_HELP: Record<string, { label: string; weight: string; tooltip: stri
   partnershipReadinessScore: {
     label: "Partnership Readiness",
     weight: "20%",
+    weightNum: 0.20,
     tooltip: "Looks for signs the creator accepts sponsorships, affiliate deals, reviews, or business inquiries.",
     icon: Handshake,
     reasonsKey: "partnershipReadiness",
@@ -74,6 +94,7 @@ const PILLAR_HELP: Record<string, { label: string; weight: string; tooltip: stri
   responseProbabilityScore: {
     label: "Response Probability",
     weight: "20%",
+    weightNum: 0.20,
     tooltip: "Estimates how likely the creator is to respond based on their size, activity, and contact availability.",
     icon: Activity,
     reasonsKey: "responseProbability",
@@ -81,6 +102,7 @@ const PILLAR_HELP: Record<string, { label: string; weight: string; tooltip: stri
   contentRelevanceScore: {
     label: "Content Relevance",
     weight: "15%",
+    weightNum: 0.15,
     tooltip: "Checks how closely the creator's content matches your product topic.",
     icon: FileText,
     reasonsKey: "contentRelevance",
@@ -88,6 +110,14 @@ const PILLAR_HELP: Record<string, { label: string; weight: string; tooltip: stri
 };
 
 const PILLARS = Object.entries(PILLAR_HELP);
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: "score_desc", label: "Highest Score" },
+  { value: "score_asc", label: "Lowest Score" },
+  { value: "response_prob", label: "Highest Response Probability" },
+  { value: "audience_match", label: "Best Audience Match" },
+  { value: "most_recent", label: "Most Recent" },
+];
 
 const TOUR_STEPS = [
   {
@@ -178,6 +208,77 @@ function saveTourDismissed() {
   }
 }
 
+function loadSortKey(): SortKey {
+  try {
+    return (localStorage.getItem("ip_qual_sort") as SortKey) ?? "score_desc";
+  } catch {
+    return "score_desc";
+  }
+}
+
+function sortItems(items: ApiQueueItem[], key: SortKey): ApiQueueItem[] {
+  return [...items].sort((a, b) => {
+    const qa = a.qualification;
+    const qb = b.qualification;
+    if (!qa && !qb) return 0;
+    if (!qa) return 1;
+    if (!qb) return -1;
+    switch (key) {
+      case "score_desc": return qb.partnerFitScore - qa.partnerFitScore;
+      case "score_asc": return qa.partnerFitScore - qb.partnerFitScore;
+      case "response_prob": return qb.responseProbabilityScore - qa.responseProbabilityScore;
+      case "audience_match": return qb.audienceMatchScore - qa.audienceMatchScore;
+      case "most_recent": {
+        const tA = qa.createdAt ? new Date(qa.createdAt).getTime() : 0;
+        const tB = qb.createdAt ? new Date(qb.createdAt).getTime() : 0;
+        return tB - tA;
+      }
+      default: return 0;
+    }
+  });
+}
+
+function exportToCSV(items: ApiQueueItem[]) {
+  const scored = items.filter((i) => i.qualification !== null);
+  if (scored.length === 0) return;
+  const headers = [
+    "Name", "Platform", "Audience Size", "Partner Fit Score", "Label", "Status",
+    "Contact Email", "Audience Match", "Brand Safety", "Partnership Readiness",
+    "Response Probability", "Content Relevance", "Hard Flags", "Next Best Action",
+  ];
+  const rows = scored.map((i) => {
+    const q = i.qualification!;
+    return [
+      i.prospect.name,
+      i.prospect.platform ?? "",
+      i.prospect.audienceSize ?? "",
+      q.partnerFitScore,
+      q.qualificationLabel,
+      q.qualificationStatus,
+      q.contactEmail ?? "",
+      q.audienceMatchScore,
+      q.brandSafetyScore,
+      q.partnershipReadinessScore,
+      q.responseProbabilityScore,
+      q.contentRelevanceScore,
+      ((q.hardFlags as string[] | null) ?? []).join("; "),
+      q.nextBestAction,
+    ];
+  });
+  const csv = [headers, ...rows]
+    .map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `qualified-prospects-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function MetricCard({
@@ -260,6 +361,190 @@ function PillarBar({
   );
 }
 
+function AuditPanel({ qual }: { qual: ApiQualification }) {
+  const flags = (qual.hardFlags as string[] | null) ?? [];
+  const auditRows = PILLARS.map(([key, cfg]) => {
+    const score = qual[key as keyof ApiQualification] as number;
+    const contribution = (score * cfg.weightNum).toFixed(1);
+    return { key, label: cfg.label, weight: cfg.weight, weightNum: cfg.weightNum, score, contribution };
+  });
+
+  return (
+    <div className="px-4 pb-4 space-y-3">
+      <div className="rounded-lg overflow-hidden border border-border">
+        <div className="px-3 py-1.5 bg-muted/50 border-b border-border">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Score Calculation</p>
+        </div>
+        <div className="divide-y divide-border/50">
+          {auditRows.map(({ key, label, weight, score, contribution }) => (
+            <div key={key} className="grid grid-cols-3 px-3 py-1.5 text-xs font-mono">
+              <span className="text-muted-foreground">{label}</span>
+              <span className="text-center text-muted-foreground">
+                {score} × {weight}
+              </span>
+              <span className="text-right font-medium">= {contribution}</span>
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-3 px-3 py-2 bg-muted/50 border-t border-border text-xs font-mono">
+          <span className="col-span-2 font-bold">Partner Fit Score</span>
+          <span className={`text-right font-bold text-base ${getScoreColor(qual.partnerFitScore)}`}>
+            {qual.partnerFitScore}
+          </span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground mb-1">Label</p>
+          <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${getLabelStyle(qual.qualificationLabel)}`}>
+            {qual.qualificationLabel}
+          </span>
+        </div>
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground mb-1">Status</p>
+          <p className="text-xs capitalize text-muted-foreground">{qual.qualificationStatus}</p>
+        </div>
+      </div>
+
+      <div>
+        <p className="text-xs font-semibold text-muted-foreground mb-1.5">Hard Flags</p>
+        {flags.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {flags.map((f) => (
+              <span key={f} className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700 border border-red-200">
+                {FLAG_LABELS[f] ?? f}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">None detected</p>
+        )}
+      </div>
+
+      <div>
+        <p className="text-xs font-semibold text-muted-foreground mb-1.5">Applied Weights</p>
+        <div className="flex flex-wrap gap-1.5">
+          {PILLARS.map(([key, cfg]) => (
+            <span key={key} className="px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground border border-border font-mono">
+              {cfg.label}: {cfg.weight}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FeedbackButtons({
+  qualId,
+  submitted,
+  onFeedback,
+}: {
+  qualId: string;
+  submitted: string | undefined;
+  onFeedback: (qualId: string, type: FeedbackType) => void;
+}) {
+  const options: { type: FeedbackType; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+    { type: "accurate", label: "Accurate", icon: ThumbsUp },
+    { type: "too_high", label: "Too High", icon: TrendingUp },
+    { type: "too_low", label: "Too Low", icon: TrendingDown },
+  ];
+  return (
+    <div className="px-4 py-2.5 border-t border-border bg-muted/10">
+      <p className="text-xs text-muted-foreground mb-1.5">Was this score accurate?</p>
+      <div className="flex items-center gap-1.5">
+        {options.map(({ type, label, icon: Icon }) => (
+          <button
+            key={type}
+            disabled={!!submitted}
+            onClick={() => onFeedback(qualId, type)}
+            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs border transition-all ${
+              submitted === type
+                ? "bg-primary border-primary text-white font-medium"
+                : submitted
+                ? "opacity-40 cursor-not-allowed border-border text-muted-foreground"
+                : "border-border text-muted-foreground hover:border-primary hover:text-foreground bg-background"
+            }`}
+          >
+            <Icon className="w-3 h-3" />
+            {submitted === type ? "✓ " : ""}{label}
+          </button>
+        ))}
+        {submitted && (
+          <span className="text-xs text-muted-foreground ml-1">— Thanks for the feedback</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BulkActionBar({
+  count,
+  onAction,
+  onClear,
+  isLoading,
+}: {
+  count: number;
+  onAction: (action: "approve" | "reject" | "star" | "archive") => void;
+  onClear: () => void;
+  isLoading: boolean;
+}) {
+  if (count === 0) return null;
+  return (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-xl border border-border bg-card shadow-xl px-4 py-3 min-w-max">
+      <span className="text-sm font-semibold mr-1">{count} selected</span>
+      <div className="w-px h-5 bg-border" />
+      <Button
+        size="sm"
+        className="h-7 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+        onClick={() => onAction("approve")}
+        disabled={isLoading}
+      >
+        <Target className="w-3 h-3" />
+        Approve
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 text-xs gap-1.5 text-amber-600 border-amber-200 hover:bg-amber-50"
+        onClick={() => onAction("star")}
+        disabled={isLoading}
+      >
+        <Star className="w-3 h-3" />
+        Star
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 text-xs gap-1.5 text-red-600 border-red-200 hover:bg-red-50"
+        onClick={() => onAction("reject")}
+        disabled={isLoading}
+      >
+        <X className="w-3 h-3" />
+        Reject
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-7 text-xs gap-1.5 text-muted-foreground"
+        onClick={() => onAction("archive")}
+        disabled={isLoading}
+      >
+        <Archive className="w-3 h-3" />
+        Archive
+      </Button>
+      <button
+        onClick={onClear}
+        className="ml-1 text-muted-foreground hover:text-foreground"
+        aria-label="Clear selection"
+      >
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
 function Walkthrough({
   step,
   total,
@@ -338,18 +623,27 @@ function Walkthrough({
 function QualificationCard({
   item,
   productId,
+  isSelected,
+  onToggleSelect,
   onStatusChange,
   onApprove,
   onRescoreStart,
+  onFeedback,
+  submittedFeedback,
 }: {
   item: ApiQueueItem;
   productId: string;
+  isSelected: boolean;
+  onToggleSelect: (qualId: string) => void;
   onStatusChange: (id: string, status: QualificationStatus) => void;
   onApprove: (id: string) => void;
   onRescoreStart: (prospectId: string) => void;
+  onFeedback: (qualId: string, type: FeedbackType) => void;
+  submittedFeedback: string | undefined;
 }) {
   const { prospect, qualification: qual } = item;
   const [reasonsOpen, setReasonsOpen] = useState(false);
+  const [auditOpen, setAuditOpen] = useState(false);
 
   const reasons: ScoreReasons = qual?.scoreReasons ?? {
     audienceMatch: [],
@@ -365,14 +659,41 @@ function QualificationCard({
   const isArchived = qual?.qualificationStatus === "archived";
   const isApproved = qual?.qualificationStatus === "qualified";
 
+  function handleToggleReasons() {
+    setReasonsOpen(!reasonsOpen);
+    if (!reasonsOpen) setAuditOpen(false);
+  }
+
+  function handleToggleAudit() {
+    setAuditOpen(!auditOpen);
+    if (!auditOpen) setReasonsOpen(false);
+  }
+
   return (
     <div
-      className={`rounded-xl border bg-card overflow-hidden transition-all ${
+      className={`rounded-xl border bg-card overflow-hidden transition-all relative ${
         isRejected || isArchived ? "opacity-60" : ""
-      } ${isApproved ? "border-emerald-200" : ""}`}
+      } ${isApproved ? "border-emerald-200" : ""} ${
+        isSelected ? "ring-2 ring-primary ring-offset-1" : ""
+      }`}
     >
+      {/* Bulk select checkbox */}
+      {qual && (
+        <button
+          onClick={() => onToggleSelect(qual.id)}
+          className={`absolute top-3 left-3 z-10 w-5 h-5 rounded border-2 flex items-center justify-center transition-all text-xs ${
+            isSelected
+              ? "bg-primary border-primary text-white"
+              : "bg-background border-border hover:border-primary"
+          }`}
+          aria-label={isSelected ? "Deselect" : "Select"}
+        >
+          {isSelected && "✓"}
+        </button>
+      )}
+
       {/* Header */}
-      <div className="p-4 flex items-start gap-3">
+      <div className={`p-4 flex items-start gap-3 ${qual ? "pl-10" : ""}`}>
         <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm">
           {prospect.name.charAt(0).toUpperCase()}
         </div>
@@ -463,17 +784,32 @@ function QualificationCard({
         </div>
       )}
 
-      {/* Why This Score */}
+      {/* Why This Score + Audit toggle */}
       {qual && (
         <div className="border-t border-border">
-          <button
-            onClick={() => setReasonsOpen(!reasonsOpen)}
-            className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
-          >
-            <span>Why This Score</span>
-            {reasonsOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
+          <div className="flex items-center divide-x divide-border">
+            <button
+              onClick={handleToggleReasons}
+              className="flex-1 flex items-center justify-between px-4 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
+            >
+              <span>Why This Score</span>
+              {reasonsOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+            <button
+              onClick={handleToggleAudit}
+              className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors ${
+                auditOpen
+                  ? "text-primary bg-primary/5"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
+              }`}
+            >
+              <Calculator className="w-3 h-3" />
+              Audit
+              {auditOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+          </div>
 
+          {/* Why This Score panel */}
           {reasonsOpen && (
             <div className="px-4 pb-3 space-y-2">
               {PILLARS.map(([key, cfg]) => {
@@ -495,7 +831,19 @@ function QualificationCard({
               })}
             </div>
           )}
+
+          {/* Audit panel */}
+          {auditOpen && <AuditPanel qual={qual} />}
         </div>
+      )}
+
+      {/* Feedback */}
+      {qual && (
+        <FeedbackButtons
+          qualId={qual.id}
+          submitted={submittedFeedback}
+          onFeedback={onFeedback}
+        />
       )}
 
       {/* Next Best Action */}
@@ -617,6 +965,9 @@ export default function QualificationEngine() {
   const { products, selectedProductId, setSelectedProductId } = useAppContext();
 
   const [activeTab, setActiveTab] = useState<TabKey>("all");
+  const [sortKey, setSortKey] = useState<SortKey>(loadSortKey);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [submittedFeedback, setSubmittedFeedback] = useState<Record<string, string>>({});
   const [tourStep, setTourStep] = useState<number | null>(() =>
     loadTourDismissed() ? null : 0,
   );
@@ -666,12 +1017,12 @@ export default function QualificationEngine() {
       const prev = queryClient.getQueryData<ApiQueueItem[]>(["qualification-queue", selectedProductId]);
       queryClient.setQueryData<ApiQueueItem[]>(
         ["qualification-queue", selectedProductId],
-        (old = []) =>
-          old.map((item) =>
+        (old) =>
+          old?.map((item) =>
             item.qualification?.id === id
-              ? { ...item, qualification: { ...item.qualification, qualificationStatus: status } }
+              ? { ...item, qualification: { ...item.qualification!, qualificationStatus: status } }
               : item,
-          ),
+          ) ?? [],
       );
       return { prev };
     },
@@ -693,164 +1044,196 @@ export default function QualificationEngine() {
     },
   });
 
-  // ── Handlers ───────────────────────────────────────────────────────────────
+  const feedbackMutation = useMutation({
+    mutationFn: ({ qualId, type }: { qualId: string; type: FeedbackType }) =>
+      submitQualificationFeedback(qualId, type),
+    onSuccess: (_data, vars) => {
+      setSubmittedFeedback((prev) => ({ ...prev, [vars.qualId]: vars.type }));
+    },
+  });
 
-  const handleStatusChange = useCallback((id: string, status: QualificationStatus) => {
-    statusMutation.mutate({ id, status });
-  }, [statusMutation]);
+  const bulkMutation = useMutation({
+    mutationFn: ({ ids, action }: { ids: string[]; action: "approve" | "reject" | "star" | "archive" }) =>
+      bulkQualificationAction(ids, action),
+    onSuccess: () => {
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["qualification-queue", selectedProductId] });
+      queryClient.invalidateQueries({ queryKey: ["qualification-metrics", selectedProductId] });
+    },
+  });
 
-  const handleApprove = useCallback((id: string) => {
-    approveMutation.mutate(id);
-  }, [approveMutation]);
+  // ── Derived data ──────────────────────────────────────────────────────────
 
-  const handleRescore = useCallback((prospectId: string) => {
-    if (!selectedProductId) return;
-    rescoreMutation.mutate({ prospectId, productId: selectedProductId });
-  }, [selectedProductId, rescoreMutation]);
-
-  const handleTourNext = useCallback(() => setTourStep((s) => (s !== null ? s + 1 : null)), []);
-  const handleTourPrev = useCallback(() => setTourStep((s) => (s !== null ? Math.max(0, s - 1) : null)), []);
-  const handleTourDismiss = useCallback(() => { saveTourDismissed(); setTourStep(null); }, []);
-
-  // ── Filter queue ───────────────────────────────────────────────────────────
-
-  const queue = queueQuery.data ?? [];
+  const allItems = queueQuery.data ?? [];
   const metrics = metricsQuery.data;
 
-  const filteredItems: ApiQueueItem[] = (() => {
+  const filteredItems = useMemo(() => {
+    let filtered: ApiQueueItem[];
     switch (activeTab) {
       case "all":
-        return queue;
+        filtered = allItems;
+        break;
       case "starred":
-        return queue.filter((i) => i.qualification?.qualificationStatus === "starred");
+        filtered = allItems.filter((i) => i.qualification?.qualificationStatus === "starred");
+        break;
       case "rejected":
-        return queue.filter(
-          (i) =>
-            i.qualification?.qualificationStatus === "rejected" ||
-            i.qualification?.qualificationStatus === "archived",
-        );
+        filtered = allItems.filter((i) => i.qualification?.qualificationStatus === "rejected");
+        break;
       default:
-        return queue.filter((i) => i.qualification?.qualificationLabel === activeTab);
+        filtered = allItems.filter((i) => i.qualification?.qualificationLabel === activeTab);
+        break;
     }
-  })();
+    return sortItems(filtered, sortKey);
+  }, [allItems, activeTab, sortKey]);
 
-  const tabCounts: Record<string, number> = {
-    all: queue.length,
-    "Ready to Pitch": metrics?.readyToPitch ?? 0,
-    Promising: metrics?.promising ?? 0,
-    "Needs Review": metrics?.needsReview ?? 0,
-    "Not Qualified": metrics?.notQualified ?? 0,
-    starred: metrics?.starred ?? 0,
-    rejected: (metrics?.rejected ?? 0),
+  const scoredOnTab = filteredItems.filter((i) => i.qualification !== null);
+  const scoredCount = scoredOnTab.length;
+
+  const tabCounts = useMemo(() => ({
+    all: allItems.length,
+    "Ready to Pitch": allItems.filter((i) => i.qualification?.qualificationLabel === "Ready to Pitch").length,
+    Promising: allItems.filter((i) => i.qualification?.qualificationLabel === "Promising").length,
+    "Needs Review": allItems.filter((i) => i.qualification?.qualificationLabel === "Needs Review").length,
+    "Not Qualified": allItems.filter((i) => i.qualification?.qualificationLabel === "Not Qualified").length,
+    starred: allItems.filter((i) => i.qualification?.qualificationStatus === "starred").length,
+    rejected: allItems.filter((i) => i.qualification?.qualificationStatus === "rejected").length,
+  }), [allItems]);
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+
+  const handleToggleSelect = useCallback((qualId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(qualId)) next.delete(qualId);
+      else next.add(qualId);
+      return next;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback(() => {
+    if (selectedIds.size === scoredCount && scoredCount > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(scoredOnTab.map((i) => i.qualification!.id)));
+    }
+  }, [selectedIds.size, scoredCount, scoredOnTab]);
+
+  const handleSortChange = (key: SortKey) => {
+    setSortKey(key);
+    try {
+      localStorage.setItem("ip_qual_sort", key);
+    } catch {
+      // ignore
+    }
   };
 
-  // ── Guard: no products ─────────────────────────────────────────────────────
+  const handleExportCSV = () => exportToCSV(filteredItems);
+
+  const handleFeedback = useCallback((qualId: string, type: FeedbackType) => {
+    feedbackMutation.mutate({ qualId, type });
+  }, [feedbackMutation]);
+
+  const handleBulkAction = (action: "approve" | "reject" | "star" | "archive") => {
+    if (selectedIds.size === 0) return;
+    bulkMutation.mutate({ ids: Array.from(selectedIds), action });
+  };
+
+  const handleRescoreStart = (prospectId: string) => {
+    if (!selectedProductId) return;
+    rescoreMutation.mutate({ prospectId, productId: selectedProductId });
+  };
+
+  // ── Tour helpers ──────────────────────────────────────────────────────────
+
+  const handleTourNext = () => setTourStep((s) => (s !== null ? Math.min(s + 1, TOUR_STEPS.length - 1) : null));
+  const handleTourPrev = () => setTourStep((s) => (s !== null ? Math.max(s - 1, 0) : null));
+  const handleTourSkip = () => setTourStep(null);
+  const handleTourDontShow = () => { saveTourDismissed(); setTourStep(null); };
+
+  // ── Guard: no products ────────────────────────────────────────────────────
 
   if (products.length === 0) {
     return (
-      <div className="p-6 max-w-2xl mx-auto mt-10 text-center space-y-4">
-        <Target className="w-10 h-10 mx-auto text-muted-foreground" />
-        <h2 className="text-lg font-semibold">Add a product first</h2>
-        <p className="text-sm text-muted-foreground">
-          The Qualification Engine scores your discovered creators against a specific product.
-          Create your first product to get started.
-        </p>
-        <Link href="/products">
-          <Button>Go to Products</Button>
-        </Link>
+      <div className="p-6 max-w-3xl mx-auto">
+        <div className="rounded-xl border border-dashed border-border p-12 text-center">
+          <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+            <Target className="w-6 h-6 text-muted-foreground" />
+          </div>
+          <h2 className="font-semibold text-lg mb-2">No product selected</h2>
+          <p className="text-muted-foreground text-sm mb-4">
+            Create a product first, then come back to qualify your prospects against it.
+          </p>
+          <Link href="/products">
+            <Button>Create a Product</Button>
+          </Link>
+        </div>
       </div>
     );
   }
 
-  // ── Guard: no product selected ─────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
 
-  if (!selectedProductId || !selectedProduct) {
-    return (
-      <div className="p-6 max-w-2xl mx-auto mt-10 space-y-4">
-        <h2 className="text-lg font-semibold">Select a product to begin</h2>
-        <p className="text-sm text-muted-foreground">
-          Choose the product you want to score creators against:
-        </p>
-        <select
-          className="w-full border border-border rounded-lg px-3 py-2 bg-card text-sm"
-          value={selectedProductId ?? ""}
-          onChange={(e) => setSelectedProductId(e.target.value || null)}
-        >
-          <option value="">-- Choose a product --</option>
-          {products.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      </div>
-    );
-  }
-
-  // ── Main render ────────────────────────────────────────────────────────────
-
-  const hasProspects = queue.length > 0;
-  const hasScored = (metrics?.scored ?? 0) > 0;
-  const isQualifying = batchMutation.isPending;
+  const TABS: { key: TabKey; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "Ready to Pitch", label: "Ready to Pitch" },
+    { key: "Promising", label: "Promising" },
+    { key: "Needs Review", label: "Needs Review" },
+    { key: "Not Qualified", label: "Not Qualified" },
+    { key: "starred", label: "Starred" },
+    { key: "rejected", label: "Rejected" },
+  ];
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
-
+    <div className="p-6 space-y-6 max-w-7xl mx-auto pb-24">
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Target className="w-6 h-6 text-primary" />
-            Partner Qualification Engine
-          </h1>
+          <h1 className="text-2xl font-bold">Partner Qualification Engine</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Review your discovered creators, understand why they fit, and move the best partners into outreach.
+            5-pillar AI scoring across every prospect — see who's worth pitching.
           </p>
-          <div className="flex items-center gap-2 mt-2">
-            <span className="text-xs text-muted-foreground">Scoring against:</span>
-            <select
-              className="text-xs border border-border rounded px-2 py-1 bg-card"
-              value={selectedProductId}
-              onChange={(e) => setSelectedProductId(e.target.value)}
-            >
-              {products.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
-
         <div className="flex items-center gap-2">
           <Link href="/help/qualification-engine">
-            <Button variant="outline" size="sm" className="gap-1.5">
+            <Button variant="ghost" size="sm" className="gap-1.5">
               <HelpCircle className="w-4 h-4" />
-              How it works
+              How It Works
             </Button>
           </Link>
-          {hasProspects && (
-            <Button
-              size="sm"
-              className="gap-1.5"
-              onClick={() => batchMutation.mutate(selectedProductId)}
-              disabled={isQualifying}
-            >
-              {isQualifying ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  Qualifying...
-                </>
-              ) : (
-                <>
-                  <Zap className="w-4 h-4" />
-                  {hasScored ? "Re-qualify All" : "Qualify All"}
-                </>
-              )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => batchMutation.mutate(selectedProductId!)}
+            disabled={!selectedProductId || batchMutation.isPending}
+          >
+            <RefreshCw className={`w-4 h-4 ${batchMutation.isPending ? "animate-spin" : ""}`} />
+            {batchMutation.isPending ? "Scoring…" : "Qualify All"}
+          </Button>
+          <Link href="/youtube-discovery">
+            <Button variant="outline" size="sm" className="gap-1.5">
+              <Youtube className="w-4 h-4" />
+              Add Prospects
             </Button>
-          )}
+          </Link>
         </div>
       </div>
+
+      {/* Product selector */}
+      {products.length > 1 && (
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Qualifying for:</span>
+          <select
+            value={selectedProductId ?? ""}
+            onChange={(e) => setSelectedProductId(e.target.value)}
+            className="text-sm border border-border rounded-md px-3 py-1.5 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            {products.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Tour */}
       {tourStep !== null && (
@@ -859,8 +1242,8 @@ export default function QualificationEngine() {
           total={TOUR_STEPS.length}
           onNext={handleTourNext}
           onPrev={handleTourPrev}
-          onSkip={handleTourDismiss}
-          onDontShow={handleTourDismiss}
+          onSkip={handleTourSkip}
+          onDontShow={handleTourDontShow}
         />
       )}
 
@@ -868,118 +1251,169 @@ export default function QualificationEngine() {
       {metrics && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <MetricCard label="Discovered" value={metrics.discovered} />
-          <MetricCard label="Scored" value={metrics.scored} />
-          <MetricCard label="Ready to Pitch" value={metrics.readyToPitch} color="emerald" />
+          <MetricCard label="Scored" value={metrics.scored} color="blue" />
+          <MetricCard label="Ready to Pitch" value={metrics.readyToPitch} color="emerald"
+            sub={metrics.scored > 0 ? `${Math.round((metrics.readyToPitch / metrics.scored) * 100)}%` : undefined} />
           <MetricCard label="Promising" value={metrics.promising} color="blue" />
           <MetricCard label="Needs Review" value={metrics.needsReview} color="amber" />
-          <MetricCard label="Approved" value={metrics.approved} color="emerald" sub="moved to targets" />
+          <MetricCard label="Approved" value={metrics.approved} color="emerald"
+            sub="moved to targets" />
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex gap-1 overflow-x-auto pb-1">
-        {(
-          [
-            ["all", "All"],
-            ["Ready to Pitch", "Ready to Pitch"],
-            ["Promising", "Promising"],
-            ["Needs Review", "Needs Review"],
-            ["Not Qualified", "Not Qualified"],
-            ["starred", "Starred ★"],
-            ["rejected", "Rejected / Archived"],
-          ] as [TabKey, string][]
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-              activeTab === key
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {label}
-            {tabCounts[key] !== undefined && tabCounts[key] > 0 && (
-              <span className={`ml-1.5 ${activeTab === key ? "opacity-80" : "opacity-60"}`}>
-                {tabCounts[key]}
-              </span>
+      {/* Toolbar: sort + select-all + export */}
+      {allItems.length > 0 && (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            {scoredCount > 0 && (
+              <button
+                onClick={handleSelectAll}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <div className={`w-4 h-4 rounded border-2 flex items-center justify-center text-xs transition-colors ${
+                  selectedIds.size > 0 && selectedIds.size === scoredCount
+                    ? "bg-primary border-primary text-white"
+                    : "border-border"
+                }`}>
+                  {selectedIds.size > 0 && selectedIds.size === scoredCount && "✓"}
+                </div>
+                {selectedIds.size > 0 ? `${selectedIds.size} of ${scoredCount} selected` : "Select all"}
+              </button>
             )}
-          </button>
-        ))}
-      </div>
-
-      {/* Empty state: no prospects at all */}
-      {!queueQuery.isLoading && !hasProspects && (
-        <div className="rounded-xl border border-dashed border-muted-foreground/30 bg-muted/10 p-12 text-center space-y-4">
-          <Youtube className="w-10 h-10 mx-auto text-muted-foreground/50" />
-          <div>
-            <p className="font-semibold text-base">No creators have been qualified yet</p>
-            <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
-              Start by running a YouTube Discovery search, then return here to review your best partner matches.
-            </p>
+            <div className="flex items-center gap-1.5">
+              <SlidersHorizontal className="w-3.5 h-3.5 text-muted-foreground" />
+              <select
+                value={sortKey}
+                onChange={(e) => handleSortChange(e.target.value as SortKey)}
+                className="text-xs border border-border rounded-md px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                {SORT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
           </div>
-          <Link href="/youtube-discovery">
-            <Button className="gap-2">
-              <Youtube className="w-4 h-4" />
-              Run Discovery
-            </Button>
-          </Link>
-        </div>
-      )}
-
-      {/* Empty state: prospects exist but none scored yet */}
-      {!queueQuery.isLoading && hasProspects && !hasScored && (
-        <div className="rounded-xl border border-dashed border-primary/30 bg-primary/5 p-8 text-center space-y-3">
-          <Zap className="w-8 h-8 mx-auto text-primary/60" />
-          <p className="font-semibold">Ready to score {queue.length} creator{queue.length !== 1 ? "s" : ""}</p>
-          <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            Click "Qualify All" to score every prospect against <strong>{selectedProduct.name}</strong> in seconds.
-          </p>
           <Button
-            onClick={() => batchMutation.mutate(selectedProductId)}
-            disabled={isQualifying}
-            className="gap-2"
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-xs h-8"
+            onClick={handleExportCSV}
+            disabled={scoredCount === 0}
           >
-            {isQualifying ? (
-              <><RefreshCw className="w-4 h-4 animate-spin" />Qualifying...</>
-            ) : (
-              <><Zap className="w-4 h-4" />Qualify All</>
-            )}
+            <Download className="w-3.5 h-3.5" />
+            Export CSV
           </Button>
         </div>
       )}
 
-      {/* Empty state: filtered tab is empty */}
-      {hasProspects && hasScored && filteredItems.length === 0 && (
-        <div className="rounded-xl border border-dashed border-muted-foreground/20 p-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            No creators in this category yet. Try a different filter tab.
-          </p>
-        </div>
-      )}
+      {/* Tabs */}
+      <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-none">
+        {TABS.map((tab) => {
+          const count = tabCounts[tab.key as keyof typeof tabCounts];
+          return (
+            <button
+              key={tab.key}
+              onClick={() => { setActiveTab(tab.key); setSelectedIds(new Set()); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+                activeTab === tab.key
+                  ? "bg-primary text-white"
+                  : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
+              }`}
+            >
+              {tab.label}
+              {count > 0 && (
+                <span
+                  className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
+                    activeTab === tab.key ? "bg-white/20" : "bg-muted-foreground/20"
+                  }`}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
 
-      {/* Card grid */}
-      {filteredItems.length > 0 && (
+      {/* Content */}
+      {!selectedProductId ? (
+        <div className="rounded-xl border border-dashed border-border p-10 text-center">
+          <p className="text-muted-foreground text-sm">Select a product above to begin qualifying prospects.</p>
+        </div>
+      ) : queueQuery.isLoading ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {filteredItems.map((item) => (
-            <QualificationCard
-              key={item.prospect.id}
-              item={item}
-              productId={selectedProductId}
-              onStatusChange={handleStatusChange}
-              onApprove={handleApprove}
-              onRescoreStart={handleRescore}
-            />
+          {[1, 2, 3, 4].map((n) => (
+            <div key={n} className="rounded-xl border bg-card p-6 animate-pulse">
+              <div className="h-4 bg-muted rounded w-2/3 mb-3" />
+              <div className="h-3 bg-muted rounded w-1/2 mb-4" />
+              <div className="space-y-2">
+                {[1, 2, 3, 4, 5].map((i) => <div key={i} className="h-2 bg-muted rounded" />)}
+              </div>
+            </div>
           ))}
         </div>
+      ) : allItems.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border p-12 text-center">
+          <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+            <Youtube className="w-6 h-6 text-muted-foreground" />
+          </div>
+          <h3 className="font-semibold text-base mb-2">No prospects yet</h3>
+          <p className="text-muted-foreground text-sm mb-4 max-w-sm mx-auto">
+            Use YouTube Discovery to find channels in your niche — they'll appear here automatically, ready to qualify.
+          </p>
+          <Link href="/youtube-discovery">
+            <Button>
+              <Youtube className="w-4 h-4 mr-2" />
+              Go to YouTube Discovery
+            </Button>
+          </Link>
+        </div>
+      ) : filteredItems.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border p-10 text-center">
+          <p className="text-muted-foreground text-sm">
+            No prospects in this category yet.{" "}
+            {allItems.some((i) => !i.qualification) && (
+              <button
+                className="text-primary underline-offset-2 hover:underline"
+                onClick={() => batchMutation.mutate(selectedProductId!)}
+              >
+                Run Qualify All
+              </button>
+            )}
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {filteredItems.map((item) => (
+              <QualificationCard
+                key={item.prospect.id}
+                item={item}
+                productId={selectedProductId!}
+                isSelected={item.qualification ? selectedIds.has(item.qualification.id) : false}
+                onToggleSelect={handleToggleSelect}
+                onStatusChange={(id, status) => statusMutation.mutate({ id, status })}
+                onApprove={(id) => approveMutation.mutate(id)}
+                onRescoreStart={handleRescoreStart}
+                onFeedback={handleFeedback}
+                submittedFeedback={item.qualification ? submittedFeedback[item.qualification.id] : undefined}
+              />
+            ))}
+          </div>
+          <p className="text-center text-xs text-muted-foreground">
+            Showing {filteredItems.length} prospect{filteredItems.length !== 1 ? "s" : ""}
+            {selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ""}
+          </p>
+        </>
       )}
 
-      {/* Loading state */}
-      {queueQuery.isLoading && (
-        <div className="text-center py-12 text-muted-foreground text-sm">
-          Loading qualification queue…
-        </div>
-      )}
+      {/* Bulk action bar */}
+      <BulkActionBar
+        count={selectedIds.size}
+        onAction={handleBulkAction}
+        onClear={() => setSelectedIds(new Set())}
+        isLoading={bulkMutation.isPending}
+      />
     </div>
   );
 }
