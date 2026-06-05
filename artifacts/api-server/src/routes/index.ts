@@ -6,6 +6,7 @@ import pipelineRouter from "./pipeline";
 import outreachRouter from "./outreach";
 import targetsRouter from "./targets";
 import prospectsRouter from "./prospects";
+import youtubeRouter from "./youtube";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(pipelineRouter);
 router.use(outreachRouter);
 router.use(targetsRouter);
 router.use(prospectsRouter);
+router.use(youtubeRouter);
 
 export default router;

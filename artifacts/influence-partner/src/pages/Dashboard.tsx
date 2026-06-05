@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAppContext } from "@/context/AppContext";
 import { getTargets, getProspects } from "@/lib/api-client";
+import { getYtStats } from "@/lib/ytStats";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +29,7 @@ import {
   ExternalLink,
   Crosshair,
   Telescope,
+  Youtube,
 } from "lucide-react";
 import { ProductIntelligencePreview } from "@/components/ProductIntelligenceSummary";
 import {
@@ -86,6 +88,7 @@ export default function Dashboard() {
   const [, setLocation] = useLocation();
   const { creators, products, selectedProductId } = useAppContext();
   const [savedPlans, setSavedPlans] = useState<SavedOutreachPlan[]>([]);
+  const [ytStats, setYtStats] = useState(() => getYtStats());
 
   const { data: targets = [] } = useQuery({
     queryKey: ["targets"],
@@ -99,6 +102,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     setSavedPlans(getSavedPlans());
+    setYtStats(getYtStats());
   }, []);
 
   const handleDeletePlan = (id: string) => {
@@ -406,6 +410,59 @@ export default function Dashboard() {
                   <p className="text-xs text-muted-foreground mt-0.5">{stat.label}</p>
                 </div>
               ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* YouTube Discovery Metrics */}
+      {ytStats.found > 0 && (
+        <Card data-testid="card-youtube-metrics">
+          <CardHeader className="pb-3 pt-4 px-5">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+                <Youtube className="w-4 h-4 text-red-500" />
+                YouTube Discovery
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-primary h-6 px-2"
+                onClick={() => setLocation("/youtube-discovery")}
+              >
+                Search YouTube →
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="px-5 pb-4">
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div
+                className="cursor-pointer hover:bg-muted/40 rounded-lg py-2 transition-colors"
+                onClick={() => setLocation("/youtube-discovery")}
+              >
+                <p className="text-2xl font-bold text-foreground">{ytStats.found}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Channels Found</p>
+              </div>
+              <div
+                className="cursor-pointer hover:bg-muted/40 rounded-lg py-2 transition-colors"
+                onClick={() => setLocation("/discovery-workspace")}
+              >
+                <p className="text-2xl font-bold text-red-600">
+                  {prospects.filter((p) => p.source === "YouTube").length}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">Channels Imported</p>
+              </div>
+              <div
+                className="cursor-pointer hover:bg-muted/40 rounded-lg py-2 transition-colors"
+                onClick={() => setLocation("/youtube-discovery")}
+              >
+                <p className="text-2xl font-bold text-amber-600">
+                  {ytStats.scoreCount > 0
+                    ? Math.round(ytStats.totalScore / ytStats.scoreCount)
+                    : 0}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">Avg Discovery Score</p>
+              </div>
             </div>
           </CardContent>
         </Card>

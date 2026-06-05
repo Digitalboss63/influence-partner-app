@@ -14,6 +14,7 @@ import PartnerStrategy from "@/pages/PartnerStrategy";
 import PartnerOutreachPlan from "@/pages/PartnerOutreachPlan";
 import PartnerTargets from "@/pages/PartnerTargets";
 import DiscoveryWorkspace from "@/pages/DiscoveryWorkspace";
+import YoutubeDiscovery from "@/pages/YoutubeDiscovery";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ function Router() {
         <Route path="/partner-outreach" component={PartnerOutreachPlan} />
         <Route path="/targets" component={PartnerTargets} />
         <Route path="/discovery-workspace" component={DiscoveryWorkspace} />
+        <Route path="/youtube-discovery" component={YoutubeDiscovery} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

@@ -241,3 +241,35 @@ export const deleteProspect = (id: string): Promise<{ deleted: boolean; id: stri
   request<{ deleted: boolean; id: string }>(`/prospects/${id}`, {
     method: "DELETE",
   });
+
+// ─── YouTube Discovery ────────────────────────────────────────────────────────
+
+export interface YouTubeChannel {
+  channelId: string;
+  channelName: string;
+  subscriberCount: number;
+  subscriberCountHidden: boolean;
+  channelUrl: string;
+  customUrl: string | null;
+  description: string;
+  thumbnailUrl: string;
+  discoveryScore: number;
+  discoveryLabel: "Excellent" | "Good" | "Moderate" | "Low";
+  searchRank: number;
+}
+
+export interface YouTubeSearchResponse {
+  channels: YouTubeChannel[];
+  total: number;
+}
+
+export const youtubeSearch = (params: {
+  keyword: string;
+  partnerCategory?: string;
+  minimumSubscribers?: number;
+}): Promise<YouTubeSearchResponse> => {
+  const qs = new URLSearchParams({ keyword: params.keyword });
+  if (params.partnerCategory) qs.set("partnerCategory", params.partnerCategory);
+  if (params.minimumSubscribers) qs.set("minimumSubscribers", String(params.minimumSubscribers));
+  return request<YouTubeSearchResponse>(`/youtube/search?${qs.toString()}`);
+};

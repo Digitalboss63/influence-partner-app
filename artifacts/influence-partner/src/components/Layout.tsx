@@ -12,6 +12,7 @@ import {
   Compass,
   Crosshair,
   Telescope,
+  Youtube,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +22,7 @@ const navItems = [
   { label: "Discover Creators", href: "/discover", icon: Search },
   { label: "Partner Strategy", href: "/partner-strategy", icon: Compass },
   { label: "Discovery Workspace", href: "/discovery-workspace", icon: Telescope },
+  { label: "YouTube Discovery", href: "/youtube-discovery", icon: Youtube },
   { label: "Targets", href: "/targets", icon: Crosshair },
   { label: "Outreach", href: "/outreach", icon: MessageSquare },
   { label: "Pipeline", href: "/pipeline", icon: KanbanSquare },
