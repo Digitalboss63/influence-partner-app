@@ -489,7 +489,7 @@ export default function ResearchOutreach() {
                   </SelectTrigger>
                   <SelectContent>
                     {allTargets.length === 0 ? (
-                      <SelectItem value="" disabled>
+                      <SelectItem value="__no_targets__" disabled>
                         No targets yet — add some in Targets
                       </SelectItem>
                     ) : (
