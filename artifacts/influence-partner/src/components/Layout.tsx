@@ -14,6 +14,7 @@ import {
   Telescope,
   Youtube,
   Filter,
+  ContactRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +26,7 @@ const navItems = [
   { label: "Discovery Workspace", href: "/discovery-workspace", icon: Telescope },
   { label: "YouTube Discovery", href: "/youtube-discovery", icon: Youtube },
   { label: "Qualification", href: "/qualification", icon: Filter },
+  { label: "Contact Intelligence", href: "/contact-intelligence", icon: ContactRound },
   { label: "Targets", href: "/targets", icon: Crosshair },
   { label: "Outreach", href: "/outreach", icon: MessageSquare },
   { label: "Pipeline", href: "/pipeline", icon: KanbanSquare },

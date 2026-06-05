@@ -17,6 +17,8 @@ import DiscoveryWorkspace from "@/pages/DiscoveryWorkspace";
 import YoutubeDiscovery from "@/pages/YoutubeDiscovery";
 import QualificationEngine from "@/pages/QualificationEngine";
 import HelpQualificationEngine from "@/pages/HelpQualificationEngine";
+import ContactIntelligence from "@/pages/ContactIntelligence";
+import HelpContactIntelligence from "@/pages/HelpContactIntelligence";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -38,6 +40,8 @@ function Router() {
         <Route path="/youtube-discovery" component={YoutubeDiscovery} />
         <Route path="/qualification" component={QualificationEngine} />
         <Route path="/help/qualification-engine" component={HelpQualificationEngine} />
+        <Route path="/contact-intelligence" component={ContactIntelligence} />
+        <Route path="/help/contact-intelligence" component={HelpContactIntelligence} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

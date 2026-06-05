@@ -407,6 +407,58 @@ export type PartnerQualification = typeof partnerQualificationsTable.$inferSelec
 export type QualificationStatus = typeof qualificationStatusEnum.enumValues[number];
 export type QualificationLabel = typeof qualificationLabelEnum.enumValues[number];
 
+// ─── Contact Intelligence ─────────────────────────────────────────────────────
+
+export const verificationStatusEnum = pgEnum("verification_status", [
+  "verified",
+  "likely",
+  "unverified",
+  "missing",
+]);
+
+export const contactIntelligenceTable = pgTable("contact_intelligence", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  prospectId: uuid("prospect_id").references(() => partnerProspectsTable.id, {
+    onDelete: "cascade",
+  }),
+  creatorId: uuid("creator_id").references(() => creatorsTable.id, {
+    onDelete: "cascade",
+  }),
+  qualificationId: uuid("qualification_id").references(
+    () => partnerQualificationsTable.id,
+    { onDelete: "set null" },
+  ),
+  productId: uuid("product_id").references(() => productsTable.id, {
+    onDelete: "cascade",
+  }),
+  businessEmail: text("business_email"),
+  websiteUrl: text("website_url"),
+  instagramUrl: text("instagram_url"),
+  tiktokUrl: text("tiktok_url"),
+  linkedinUrl: text("linkedin_url"),
+  contactPageUrl: text("contact_page_url"),
+  youtubeUrl: text("youtube_url"),
+  confidenceScore: integer("confidence_score").notNull().default(0),
+  contactReadinessScore: integer("contact_readiness_score").notNull().default(0),
+  verificationStatus: verificationStatusEnum("verification_status")
+    .notNull()
+    .default("unverified"),
+  sourceData: jsonb("source_data"),
+  auditNotes: jsonb("audit_notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertContactIntelligenceSchema = createInsertSchema(
+  contactIntelligenceTable,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertContactIntelligence = z.infer<
+  typeof insertContactIntelligenceSchema
+>;
+export type ContactIntelligence = typeof contactIntelligenceTable.$inferSelect;
+export type VerificationStatus =
+  typeof verificationStatusEnum.enumValues[number];
+
 // ─── Qualification Feedback ───────────────────────────────────────────────────
 
 export const feedbackTypeEnum = pgEnum("feedback_type", [

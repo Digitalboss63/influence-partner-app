@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAppContext } from "@/context/AppContext";
-import { getTargets, getProspects, getQualificationMetrics, type ApiQualMetrics } from "@/lib/api-client";
+import { getTargets, getProspects, getQualificationMetrics, getContactMetrics, type ApiQualMetrics, type ApiContactMetrics } from "@/lib/api-client";
 import { getYtStats } from "@/lib/ytStats";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ import {
   Youtube,
   Filter,
   ArrowDown,
+  ContactRound,
 } from "lucide-react";
 import { ProductIntelligencePreview } from "@/components/ProductIntelligenceSummary";
 import {
@@ -106,6 +107,12 @@ export default function Dashboard() {
     queryKey: ["qualification-metrics", selectedProductId],
     queryFn: () => getQualificationMetrics(selectedProductId!),
     enabled: !!selectedProductId,
+    staleTime: 30_000,
+  });
+
+  const { data: contactMetrics } = useQuery<ApiContactMetrics>({
+    queryKey: ["contact-metrics-dashboard", selectedProductId],
+    queryFn: () => getContactMetrics(selectedProductId ?? undefined),
     staleTime: 30_000,
   });
 
@@ -869,6 +876,12 @@ export default function Dashboard() {
                 count: qualMetrics?.scored ?? 0,
                 color: "bg-blue-500",
                 path: "/qualification",
+              },
+              {
+                label: "Contact Found",
+                count: contactMetrics?.contactsFound ?? 0,
+                color: "bg-indigo-500",
+                path: "/contact-intelligence",
               },
               {
                 label: "Targeted",

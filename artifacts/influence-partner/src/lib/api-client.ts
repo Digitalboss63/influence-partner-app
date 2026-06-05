@@ -350,6 +350,95 @@ export const bulkQualificationAction = (
     body: JSON.stringify({ ids, action }),
   });
 
+// ─── Contact Intelligence ─────────────────────────────────────────────────────
+
+export type VerificationStatus = "verified" | "likely" | "unverified" | "missing";
+
+export interface ApiContactIntelligence {
+  id: string;
+  prospectId: string | null;
+  creatorId: string | null;
+  qualificationId: string | null;
+  productId: string | null;
+  businessEmail: string | null;
+  websiteUrl: string | null;
+  instagramUrl: string | null;
+  tiktokUrl: string | null;
+  linkedinUrl: string | null;
+  contactPageUrl: string | null;
+  youtubeUrl: string | null;
+  confidenceScore: number;
+  contactReadinessScore: number;
+  verificationStatus: VerificationStatus;
+  sourceData: Record<string, string[]> | null;
+  auditNotes: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApiContactMetrics {
+  qualifiedCreators: number;
+  contactsFound: number;
+  emailsFound: number;
+  websiteFound: number;
+  socialFound: number;
+  highReadiness: number;
+  missing: number;
+  verified: number;
+}
+
+export type ContactTab = "all" | "email" | "website" | "social" | "missing" | "verified";
+
+export const getContactIntelligence = (params?: {
+  productId?: string;
+  tab?: ContactTab;
+}): Promise<ApiContactIntelligence[]> => {
+  const qs = new URLSearchParams();
+  if (params?.productId) qs.set("productId", params.productId);
+  if (params?.tab && params.tab !== "all") qs.set("tab", params.tab);
+  const q = qs.toString() ? `?${qs.toString()}` : "";
+  return request<ApiContactIntelligence[]>(`/contact-intelligence${q}`);
+};
+
+export const getContactMetrics = (productId?: string): Promise<ApiContactMetrics> => {
+  const qs = new URLSearchParams();
+  if (productId) qs.set("productId", productId);
+  const q = qs.toString() ? `?${qs.toString()}` : "";
+  return request<ApiContactMetrics>(`/contact-intelligence/metrics${q}`);
+};
+
+export const discoverContact = (
+  prospectId: string,
+  productId?: string,
+): Promise<ApiContactIntelligence> =>
+  request<ApiContactIntelligence>("/contact-intelligence/discover", {
+    method: "POST",
+    body: JSON.stringify({ prospectId, productId }),
+  });
+
+export const discoverContactsBatch = (
+  productId: string,
+): Promise<{ processed: number; succeeded: number; failed: number }> =>
+  request<{ processed: number; succeeded: number; failed: number }>(
+    "/contact-intelligence/discover-batch",
+    { method: "POST", body: JSON.stringify({ productId }) },
+  );
+
+export const verifyContact = (
+  id: string,
+  verificationStatus: VerificationStatus,
+): Promise<ApiContactIntelligence> =>
+  request<ApiContactIntelligence>(`/contact-intelligence/${id}/verify`, {
+    method: "PATCH",
+    body: JSON.stringify({ verificationStatus }),
+  });
+
+export const exportContactIntelligenceCsv = (productId?: string): string => {
+  const qs = new URLSearchParams();
+  if (productId) qs.set("productId", productId);
+  return `/api/contact-intelligence/export${qs.toString() ? `?${qs.toString()}` : ""}`;
+};
+
 // ─── YouTube Discovery ────────────────────────────────────────────────────────
 
 export interface YouTubeChannel {
