@@ -471,6 +471,66 @@ export type OutreachPriority = typeof outreachPriorityEnum.enumValues[number];
 export type OutreachContactMethod =
   typeof outreachContactMethodEnum.enumValues[number];
 
+// ─── Performance Intelligence ─────────────────────────────────────────────────
+
+export const creatorPerformanceTable = pgTable("creator_performance", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  targetId: uuid("target_id").references(() => partnerTargetsTable.id, {
+    onDelete: "set null",
+  }),
+  productId: uuid("product_id").references(() => productsTable.id, {
+    onDelete: "cascade",
+  }),
+  creatorName: text("creator_name").notNull(),
+  partnerFitScore: integer("partner_fit_score"),
+  contactReadinessScore: integer("contact_readiness_score"),
+  outreachSentCount: integer("outreach_sent_count").notNull().default(0),
+  replyCount: integer("reply_count").notNull().default(0),
+  interestedCount: integer("interested_count").notNull().default(0),
+  negotiationCount: integer("negotiation_count").notNull().default(0),
+  conversionCount: integer("conversion_count").notNull().default(0),
+  estimatedRevenue: real("estimated_revenue"),
+  actualRevenue: real("actual_revenue"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const campaignPerformanceTable = pgTable("campaign_performance", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  productId: uuid("product_id").references(() => productsTable.id, {
+    onDelete: "cascade",
+  }),
+  campaignName: text("campaign_name").notNull(),
+  outreachCount: integer("outreach_count").notNull().default(0),
+  replies: integer("replies").notNull().default(0),
+  interested: integer("interested").notNull().default(0),
+  negotiations: integer("negotiations").notNull().default(0),
+  conversions: integer("conversions").notNull().default(0),
+  conversionRate: real("conversion_rate"),
+  estimatedRevenue: real("estimated_revenue"),
+  actualRevenue: real("actual_revenue"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCreatorPerformanceSchema = createInsertSchema(
+  creatorPerformanceTable,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertCreatorPerformance = z.infer<
+  typeof insertCreatorPerformanceSchema
+>;
+export type CreatorPerformance =
+  typeof creatorPerformanceTable.$inferSelect;
+
+export const insertCampaignPerformanceSchema = createInsertSchema(
+  campaignPerformanceTable,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertCampaignPerformance = z.infer<
+  typeof insertCampaignPerformanceSchema
+>;
+export type CampaignPerformance =
+  typeof campaignPerformanceTable.$inferSelect;
+
 // ─── Contact Intelligence ─────────────────────────────────────────────────────
 
 export const verificationStatusEnum = pgEnum("verification_status", [

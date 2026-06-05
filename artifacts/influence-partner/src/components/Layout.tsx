@@ -16,6 +16,7 @@ import {
   Filter,
   ContactRound,
   Send,
+  TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +32,7 @@ const navItems = [
   { label: "Targets", href: "/targets", icon: Crosshair },
   { label: "Outreach", href: "/outreach", icon: MessageSquare },
   { label: "Outreach Operations", href: "/outreach-operations", icon: Send },
+  { label: "Performance", href: "/performance", icon: TrendingUp },
   { label: "Pipeline", href: "/pipeline", icon: KanbanSquare },
 ];
 

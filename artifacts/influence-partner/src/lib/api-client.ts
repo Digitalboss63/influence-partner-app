@@ -449,6 +449,130 @@ export const deleteOutreachOperation = (id: string): Promise<{ deleted: boolean;
     method: "DELETE",
   });
 
+// ─── Performance Intelligence ─────────────────────────────────────────────────
+
+export interface PerformanceFunnelStep {
+  stage: string;
+  count: number;
+  pct: number;
+}
+
+export interface ApiPerformanceOverview {
+  total: number;
+  sent: number;
+  replied: number;
+  interested: number;
+  negotiating: number;
+  converted: number;
+  replyRate: number;
+  interestedRate: number;
+  conversionRate: number;
+  overallConversionRate: number;
+  totalEstimatedRevenue: number;
+  totalActualRevenue: number;
+  funnel: PerformanceFunnelStep[];
+}
+
+export interface ApiCreatorPerformance {
+  creatorName: string;
+  productId: string | null;
+  targetId: string | null;
+  total: number;
+  sent: number;
+  replied: number;
+  interested: number;
+  negotiating: number;
+  converted: number;
+  replyRate: number;
+  interestedRate: number;
+  conversionRate: number;
+  estimatedRevenue: number | null;
+  actualRevenue: number | null;
+  partnerFitScore: number | null;
+  contactReadinessScore: number | null;
+  revenueRecordId: string | null;
+}
+
+export interface ApiProductPerformance {
+  productId: string;
+  productName: string;
+  total: number;
+  sent: number;
+  replied: number;
+  interested: number;
+  negotiating: number;
+  converted: number;
+  replyRate: number;
+  conversionRate: number;
+  overallConversionRate: number;
+  estimatedRevenue: number | null;
+  actualRevenue: number | null;
+  revenueRecordId: string | null;
+}
+
+export interface ApiChannelPerformance {
+  channel: string;
+  total: number;
+  sent: number;
+  replied: number;
+  interested: number;
+  converted: number;
+  replyRate: number;
+  interestedRate: number;
+  conversionRate: number;
+}
+
+export interface ApiPerformanceInsight {
+  type: string;
+  text: string;
+  value?: number;
+}
+
+export const getPerformanceOverview = (productId?: string): Promise<ApiPerformanceOverview> => {
+  const qs = productId ? `?productId=${productId}` : "";
+  return request<ApiPerformanceOverview>(`/performance/overview${qs}`);
+};
+
+export const getCreatorPerformance = (productId?: string): Promise<ApiCreatorPerformance[]> => {
+  const qs = productId ? `?productId=${productId}` : "";
+  return request<ApiCreatorPerformance[]>(`/performance/creators${qs}`);
+};
+
+export const getProductPerformance = (): Promise<ApiProductPerformance[]> =>
+  request<ApiProductPerformance[]>("/performance/products");
+
+export const getChannelPerformance = (productId?: string): Promise<ApiChannelPerformance[]> => {
+  const qs = productId ? `?productId=${productId}` : "";
+  return request<ApiChannelPerformance[]>(`/performance/channels${qs}`);
+};
+
+export const getPerformanceInsights = (productId?: string): Promise<ApiPerformanceInsight[]> => {
+  const qs = productId ? `?productId=${productId}` : "";
+  return request<ApiPerformanceInsight[]>(`/performance/insights${qs}`);
+};
+
+export const updateCreatorRevenue = (payload: {
+  creatorName: string;
+  productId?: string;
+  estimatedRevenue?: number;
+  actualRevenue?: number;
+  partnerFitScore?: number;
+}): Promise<unknown> =>
+  request<unknown>("/performance/creators/revenue", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+
+export const updateProductRevenue = (payload: {
+  productId: string;
+  estimatedRevenue?: number;
+  actualRevenue?: number;
+}): Promise<unknown> =>
+  request<unknown>("/performance/products/revenue", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+
 // ─── Contact Intelligence ─────────────────────────────────────────────────────
 
 export type VerificationStatus = "verified" | "likely" | "unverified" | "missing";
