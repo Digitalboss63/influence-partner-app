@@ -1,4 +1,9 @@
 export type Platform = 'YouTube' | 'Instagram' | 'TikTok';
+export type PartnerProspectStatus =
+  | 'New Prospect'
+  | 'Qualified'
+  | 'Rejected'
+  | 'Added To Targets';
 export type PartnerTargetStatus =
   | 'Not Contacted'
   | 'Contacted'

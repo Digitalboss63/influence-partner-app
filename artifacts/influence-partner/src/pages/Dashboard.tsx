@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAppContext } from "@/context/AppContext";
-import { getTargets } from "@/lib/api-client";
+import { getTargets, getProspects } from "@/lib/api-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +27,7 @@ import {
   Trash2,
   ExternalLink,
   Crosshair,
+  Telescope,
 } from "lucide-react";
 import { ProductIntelligencePreview } from "@/components/ProductIntelligenceSummary";
 import {
@@ -89,6 +90,11 @@ export default function Dashboard() {
   const { data: targets = [] } = useQuery({
     queryKey: ["targets"],
     queryFn: () => getTargets(),
+  });
+
+  const { data: prospects = [] } = useQuery({
+    queryKey: ["prospects"],
+    queryFn: () => getProspects(),
   });
 
   useEffect(() => {
@@ -395,6 +401,59 @@ export default function Dashboard() {
                   key={stat.label}
                   className="cursor-pointer hover:bg-muted/40 rounded-lg py-2 transition-colors"
                   onClick={() => setLocation("/targets")}
+                >
+                  <p className={`text-2xl font-bold ${stat.color}`}>{stat.value}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{stat.label}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Discovery Workspace Summary */}
+      {prospects.length > 0 && (
+        <Card data-testid="card-discovery-summary">
+          <CardHeader className="pb-3 pt-4 px-5">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+                <Telescope className="w-4 h-4 text-primary" />
+                Discovery Workspace
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-primary h-6 px-2"
+                onClick={() => setLocation("/discovery-workspace")}
+              >
+                View Prospects →
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="px-5 pb-4">
+            <div className="grid grid-cols-4 gap-3 text-center">
+              {[
+                { label: "Prospects", value: prospects.length, color: "text-foreground" },
+                {
+                  label: "Qualified",
+                  value: prospects.filter((p) => p.status === "Qualified").length,
+                  color: "text-emerald-700",
+                },
+                {
+                  label: "Added to Targets",
+                  value: prospects.filter((p) => p.status === "Added To Targets").length,
+                  color: "text-purple-700",
+                },
+                {
+                  label: "Rejected",
+                  value: prospects.filter((p) => p.status === "Rejected").length,
+                  color: "text-red-500",
+                },
+              ].map((stat) => (
+                <div
+                  key={stat.label}
+                  className="cursor-pointer hover:bg-muted/40 rounded-lg py-2 transition-colors"
+                  onClick={() => setLocation("/discovery-workspace")}
                 >
                   <p className={`text-2xl font-bold ${stat.color}`}>{stat.value}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{stat.label}</p>

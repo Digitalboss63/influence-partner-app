@@ -287,6 +287,42 @@ export type InsertPartnerTarget = z.infer<typeof insertPartnerTargetSchema>;
 export type PartnerTarget = typeof partnerTargetsTable.$inferSelect;
 export type PartnerTargetStatus = typeof partnerTargetStatusEnum.enumValues[number];
 
+// ─── Partner Prospects (Discovery Workspace) ──────────────────────────────────
+
+export const partnerProspectStatusEnum = pgEnum("partner_prospect_status", [
+  "New Prospect",
+  "Qualified",
+  "Rejected",
+  "Added To Targets",
+]);
+
+export const partnerProspectsTable = pgTable("partner_prospects", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  company: text("company"),
+  platform: text("platform"),
+  partnerCategory: text("partner_category"),
+  website: text("website"),
+  email: text("email"),
+  socialUrl: text("social_url"),
+  audienceSize: text("audience_size"),
+  notes: text("notes"),
+  source: text("source").notNull().default("Manual"),
+  status: partnerProspectStatusEnum("status").notNull().default("New Prospect"),
+  userId: text("user_id"),
+  organizationId: text("organization_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertPartnerProspectSchema = createInsertSchema(
+  partnerProspectsTable,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertPartnerProspect = z.infer<typeof insertPartnerProspectSchema>;
+export type PartnerProspect = typeof partnerProspectsTable.$inferSelect;
+export type PartnerProspectStatus =
+  typeof partnerProspectStatusEnum.enumValues[number];
+
 // ─── Outreach Messages ────────────────────────────────────────────────────────
 
 export const outreachMessagesTable = pgTable("outreach_messages", {
