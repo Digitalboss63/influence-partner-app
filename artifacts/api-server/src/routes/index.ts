@@ -9,6 +9,7 @@ import prospectsRouter from "./prospects";
 import youtubeRouter from "./youtube";
 import qualificationRouter from "./qualification";
 import contactIntelligenceRouter from "./contact-intelligence";
+import outreachOperationsRouter from "./outreach-operations";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(prospectsRouter);
 router.use(youtubeRouter);
 router.use(qualificationRouter);
 router.use(contactIntelligenceRouter);
+router.use(outreachOperationsRouter);
 
 export default router;

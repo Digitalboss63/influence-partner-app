@@ -350,6 +350,105 @@ export const bulkQualificationAction = (
     body: JSON.stringify({ ids, action }),
   });
 
+// ─── Outreach Operations ──────────────────────────────────────────────────────
+
+export type OutreachStatus =
+  | "draft" | "ready" | "sent" | "replied"
+  | "interested" | "negotiating" | "converted" | "declined" | "inactive";
+
+export type OutreachPriority = "low" | "medium" | "high";
+
+export type OutreachContactMethod =
+  | "Email" | "Instagram DM" | "TikTok DM" | "LinkedIn" | "Website Contact Form";
+
+export interface ApiOutreachOperation {
+  id: string;
+  targetId: string | null;
+  productId: string | null;
+  creatorName: string;
+  contactMethod: OutreachContactMethod;
+  contactDestination: string | null;
+  outreachSubject: string | null;
+  outreachMessage: string | null;
+  outreachStatus: OutreachStatus;
+  priority: OutreachPriority;
+  sentAt: string | null;
+  followUpDue: string | null;
+  lastActivityAt: string | null;
+  repliedAt: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApiOutreachMetrics {
+  drafts: number;
+  ready: number;
+  sent: number;
+  replied: number;
+  interested: number;
+  negotiating: number;
+  converted: number;
+  declined: number;
+  inactive: number;
+  total: number;
+  followUp: { overdue: number; dueToday: number; dueThisWeek: number };
+}
+
+export interface CreateOutreachOperationPayload {
+  creatorName: string;
+  contactMethod: OutreachContactMethod;
+  contactDestination?: string;
+  outreachSubject?: string;
+  outreachMessage?: string;
+  outreachStatus?: OutreachStatus;
+  priority?: OutreachPriority;
+  targetId?: string;
+  productId?: string;
+  notes?: string;
+  followUpDue?: string;
+}
+
+export const getOutreachOperations = (params?: {
+  productId?: string;
+  status?: OutreachStatus | "all";
+}): Promise<ApiOutreachOperation[]> => {
+  const qs = new URLSearchParams();
+  if (params?.productId) qs.set("productId", params.productId);
+  if (params?.status && params.status !== "all") qs.set("status", params.status);
+  const q = qs.toString() ? `?${qs.toString()}` : "";
+  return request<ApiOutreachOperation[]>(`/outreach-operations${q}`);
+};
+
+export const getOutreachMetrics = (productId?: string): Promise<ApiOutreachMetrics> => {
+  const qs = new URLSearchParams();
+  if (productId) qs.set("productId", productId);
+  const q = qs.toString() ? `?${qs.toString()}` : "";
+  return request<ApiOutreachMetrics>(`/outreach-operations/metrics${q}`);
+};
+
+export const createOutreachOperation = (
+  payload: CreateOutreachOperationPayload,
+): Promise<ApiOutreachOperation> =>
+  request<ApiOutreachOperation>("/outreach-operations", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const updateOutreachOperation = (
+  id: string,
+  payload: Partial<CreateOutreachOperationPayload & { outreachStatus: OutreachStatus }>,
+): Promise<ApiOutreachOperation> =>
+  request<ApiOutreachOperation>(`/outreach-operations/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+
+export const deleteOutreachOperation = (id: string): Promise<{ deleted: boolean; id: string }> =>
+  request<{ deleted: boolean; id: string }>(`/outreach-operations/${id}`, {
+    method: "DELETE",
+  });
+
 // ─── Contact Intelligence ─────────────────────────────────────────────────────
 
 export type VerificationStatus = "verified" | "likely" | "unverified" | "missing";

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAppContext } from "@/context/AppContext";
-import { getTargets, getProspects, getQualificationMetrics, getContactMetrics, type ApiQualMetrics, type ApiContactMetrics } from "@/lib/api-client";
+import { getTargets, getProspects, getQualificationMetrics, getContactMetrics, getOutreachMetrics, type ApiQualMetrics, type ApiContactMetrics, type ApiOutreachMetrics } from "@/lib/api-client";
 import { getYtStats } from "@/lib/ytStats";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,7 @@ import {
   Filter,
   ArrowDown,
   ContactRound,
+  Send,
 } from "lucide-react";
 import { ProductIntelligencePreview } from "@/components/ProductIntelligenceSummary";
 import {
@@ -113,6 +114,12 @@ export default function Dashboard() {
   const { data: contactMetrics } = useQuery<ApiContactMetrics>({
     queryKey: ["contact-metrics-dashboard", selectedProductId],
     queryFn: () => getContactMetrics(selectedProductId ?? undefined),
+    staleTime: 30_000,
+  });
+
+  const { data: outreachMetrics } = useQuery<ApiOutreachMetrics>({
+    queryKey: ["outreach-metrics-dashboard", selectedProductId],
+    queryFn: () => getOutreachMetrics(selectedProductId ?? undefined),
     staleTime: 30_000,
   });
 
@@ -852,6 +859,69 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Outreach Health Card */}
+      {outreachMetrics && (
+        <Card data-testid="card-outreach-health">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Send className="w-4 h-4 text-primary" />
+              Outreach Health
+              <span className="text-xs font-normal text-muted-foreground ml-1">Drafts → Converted</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-5">
+            <div className="flex items-stretch gap-0 overflow-x-auto">
+              {[
+                { label: "Drafts",      value: outreachMetrics.drafts,       color: "bg-muted-foreground/40",  path: "/outreach-operations" },
+                { label: "Ready",       value: outreachMetrics.ready,        color: "bg-blue-500",             path: "/outreach-operations" },
+                { label: "Sent",        value: outreachMetrics.sent,         color: "bg-violet-500",           path: "/outreach-operations" },
+                { label: "Replies",     value: outreachMetrics.replied,      color: "bg-amber-500",            path: "/outreach-operations" },
+                { label: "Interested",  value: outreachMetrics.interested,   color: "bg-emerald-500",          path: "/outreach-operations" },
+                { label: "Negotiating", value: outreachMetrics.negotiating,  color: "bg-orange-500",           path: "/outreach-operations" },
+                { label: "Converted",   value: outreachMetrics.converted,    color: "bg-primary",              path: "/outreach-operations" },
+              ].map((step, idx, arr) => {
+                const prev = arr[idx - 1];
+                const conversion = prev && prev.value > 0
+                  ? `${Math.round((step.value / prev.value) * 100)}%`
+                  : null;
+                return (
+                  <div key={step.label} className="flex items-center min-w-0">
+                    {conversion !== null && (
+                      <div className="flex flex-col items-center px-2 flex-shrink-0">
+                        <ArrowDown className="w-3.5 h-3.5 text-muted-foreground/40 rotate-[-90deg]" />
+                        <span className="text-xs text-muted-foreground font-medium mt-0.5 whitespace-nowrap">
+                          {conversion}
+                        </span>
+                      </div>
+                    )}
+                    <button
+                      className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-border hover:bg-muted/40 transition-colors min-w-[90px] group"
+                      onClick={() => setLocation(step.path)}
+                    >
+                      <div className={`w-8 h-1.5 rounded-full ${step.color} opacity-80 group-hover:opacity-100`} />
+                      <span className={`text-2xl font-bold ${step.value > 0 ? "text-foreground" : "text-muted-foreground/40"}`}>
+                        {step.value}
+                      </span>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">{step.label}</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            {outreachMetrics.followUp.overdue > 0 && (
+              <div
+                className="mt-3 flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 cursor-pointer hover:bg-red-100 transition-colors"
+                onClick={() => setLocation("/outreach-operations")}
+              >
+                <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+                <span className="font-medium">{outreachMetrics.followUp.overdue} overdue follow-up{outreachMetrics.followUp.overdue !== 1 ? "s" : ""}</span>
+                <span className="text-red-500">— action required</span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Funnel Health Card */}
       <Card data-testid="card-funnel-health">

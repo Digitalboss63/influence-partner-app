@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAppContext } from "@/context/AppContext";
 import { OutreachChannel, OutreachTone } from "@/types/influencePartner";
 import { generateOutreachMessage } from "@/lib/outreachTemplates";
+import { createOutreachOperation, type OutreachContactMethod } from "@/lib/api-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 import {
   MessageSquare,
   Mail,
@@ -24,7 +27,16 @@ import {
   CheckCheck,
   Zap,
   Info,
+  Send,
+  CheckCircle2,
 } from "lucide-react";
+
+const CHANNEL_TO_METHOD: Record<OutreachChannel, OutreachContactMethod> = {
+  "Email":                 "Email",
+  "Instagram DM":          "Instagram DM",
+  "TikTok DM":             "TikTok DM",
+  "YouTube Sponsorship":   "Email",
+};
 
 const CHANNELS: OutreachChannel[] = ["Email", "Instagram DM", "TikTok DM", "YouTube Sponsorship"];
 const TONES: OutreachTone[] = ["Direct", "Friendly", "Professional", "High-Commission Offer"];
@@ -47,6 +59,9 @@ export default function OutreachGenerator() {
   const { creators, products } = useAppContext();
   const creatorIdParam = useQueryParam("creatorId");
   const channelParam = useQueryParam("channel");
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const qc = useQueryClient();
 
   const [selectedCreatorId, setSelectedCreatorId] = useState<string>(
     creatorIdParam ?? (creators[0]?.id ?? "")
@@ -63,6 +78,29 @@ export default function OutreachGenerator() {
   const [message, setMessage] = useState<string>("");
   const [copied, setCopied] = useState(false);
   const [generated, setGenerated] = useState(false);
+  const [savedAsOp, setSavedAsOp] = useState(false);
+
+  const saveAsOpMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedCreator || !selectedProduct) throw new Error("No creator/product");
+      return createOutreachOperation({
+        creatorName: selectedCreator.name,
+        contactMethod: CHANNEL_TO_METHOD[channel],
+        outreachSubject: `Partnership opportunity — ${selectedProduct.name}`,
+        outreachMessage: message,
+        productId: selectedProductId || undefined,
+        outreachStatus: "draft",
+        priority: "medium",
+      });
+    },
+    onSuccess: () => {
+      setSavedAsOp(true);
+      toast({ title: "Saved as draft in Outreach Operations" });
+      qc.invalidateQueries({ queryKey: ["outreach-operations"] });
+      qc.invalidateQueries({ queryKey: ["outreach-metrics"] });
+    },
+    onError: (e) => toast({ title: String(e), variant: "destructive" }),
+  });
 
   const selectedCreator = creators.find((c) => c.id === selectedCreatorId);
   const selectedProduct = products.find((p) => p.id === selectedProductId);
@@ -77,6 +115,7 @@ export default function OutreachGenerator() {
     setMessage(msg);
     setGenerated(true);
     setCopied(false);
+    setSavedAsOp(false);
   };
 
   const regenerate = () => {
@@ -274,7 +313,7 @@ export default function OutreachGenerator() {
                   {generated ? `${channel} · ${tone}` : "Generated Message"}
                 </CardTitle>
                 {generated && (
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <Button
                       size="sm"
                       variant="outline"
@@ -302,6 +341,28 @@ export default function OutreachGenerator() {
                         </>
                       )}
                     </Button>
+                    {savedAsOp ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-emerald-600 border-emerald-200"
+                        onClick={() => setLocation("/outreach-operations")}
+                        data-testid="button-view-operations"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                        View Operations →
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={() => saveAsOpMutation.mutate()}
+                        disabled={saveAsOpMutation.isPending}
+                        data-testid="button-save-as-operation"
+                      >
+                        <Send className="w-3.5 h-3.5 mr-1" />
+                        {saveAsOpMutation.isPending ? "Saving…" : "Create Operation"}
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>

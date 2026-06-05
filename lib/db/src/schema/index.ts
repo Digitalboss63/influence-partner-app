@@ -407,6 +407,70 @@ export type PartnerQualification = typeof partnerQualificationsTable.$inferSelec
 export type QualificationStatus = typeof qualificationStatusEnum.enumValues[number];
 export type QualificationLabel = typeof qualificationLabelEnum.enumValues[number];
 
+// ─── Outreach Operations ──────────────────────────────────────────────────────
+
+export const outreachStatusEnum = pgEnum("outreach_status", [
+  "draft",
+  "ready",
+  "sent",
+  "replied",
+  "interested",
+  "negotiating",
+  "converted",
+  "declined",
+  "inactive",
+]);
+
+export const outreachPriorityEnum = pgEnum("outreach_priority", [
+  "low",
+  "medium",
+  "high",
+]);
+
+export const outreachContactMethodEnum = pgEnum("outreach_contact_method", [
+  "Email",
+  "Instagram DM",
+  "TikTok DM",
+  "LinkedIn",
+  "Website Contact Form",
+]);
+
+export const outreachOperationsTable = pgTable("outreach_operations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  targetId: uuid("target_id").references(() => partnerTargetsTable.id, {
+    onDelete: "set null",
+  }),
+  productId: uuid("product_id").references(() => productsTable.id, {
+    onDelete: "cascade",
+  }),
+  creatorName: text("creator_name").notNull(),
+  contactMethod: outreachContactMethodEnum("contact_method").notNull(),
+  contactDestination: text("contact_destination"),
+  outreachSubject: text("outreach_subject"),
+  outreachMessage: text("outreach_message"),
+  outreachStatus: outreachStatusEnum("outreach_status").notNull().default("draft"),
+  priority: outreachPriorityEnum("priority").notNull().default("medium"),
+  sentAt: timestamp("sent_at"),
+  followUpDue: timestamp("follow_up_due"),
+  lastActivityAt: timestamp("last_activity_at"),
+  repliedAt: timestamp("replied_at"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertOutreachOperationSchema = createInsertSchema(
+  outreachOperationsTable,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertOutreachOperation = z.infer<
+  typeof insertOutreachOperationSchema
+>;
+export type OutreachOperation = typeof outreachOperationsTable.$inferSelect;
+export type OutreachStatus = typeof outreachStatusEnum.enumValues[number];
+export type OutreachPriority = typeof outreachPriorityEnum.enumValues[number];
+export type OutreachContactMethod =
+  typeof outreachContactMethodEnum.enumValues[number];
+
 // ─── Contact Intelligence ─────────────────────────────────────────────────────
 
 export const verificationStatusEnum = pgEnum("verification_status", [

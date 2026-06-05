@@ -15,6 +15,7 @@ import {
   Youtube,
   Filter,
   ContactRound,
+  Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +30,7 @@ const navItems = [
   { label: "Contact Intelligence", href: "/contact-intelligence", icon: ContactRound },
   { label: "Targets", href: "/targets", icon: Crosshair },
   { label: "Outreach", href: "/outreach", icon: MessageSquare },
+  { label: "Outreach Operations", href: "/outreach-operations", icon: Send },
   { label: "Pipeline", href: "/pipeline", icon: KanbanSquare },
 ];
 
