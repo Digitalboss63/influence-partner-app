@@ -443,6 +443,9 @@ export const outreachOperationsTable = pgTable("outreach_operations", {
   productId: uuid("product_id").references(() => productsTable.id, {
     onDelete: "cascade",
   }),
+  campaignId: uuid("campaign_id").references(() => campaignsTable.id, {
+    onDelete: "set null",
+  }),
   creatorName: text("creator_name").notNull(),
   contactMethod: outreachContactMethodEnum("contact_method").notNull(),
   contactDestination: text("contact_destination"),

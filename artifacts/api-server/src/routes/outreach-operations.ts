@@ -3,9 +3,10 @@ import { db } from "@workspace/db";
 import {
   outreachOperationsTable,
   partnerTargetsTable,
+  campaignsTable,
   type PartnerTargetStatus,
 } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 const router = Router();
 
@@ -46,7 +47,21 @@ router.get("/outreach-operations", async (req, res) => {
 
   rows.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
-  res.json(rows);
+  // Enrich with campaign names where campaignId is set
+  const campaignIds = [...new Set(rows.map((r) => r.campaignId).filter((c): c is string => !!c))];
+  const campaigns = campaignIds.length > 0
+    ? await db.select({ id: campaignsTable.id, name: campaignsTable.name })
+        .from(campaignsTable)
+        .where(inArray(campaignsTable.id, campaignIds))
+    : [];
+  const campaignNameMap = new Map(campaigns.map((c) => [c.id, c.name]));
+
+  const enriched = rows.map((r) => ({
+    ...r,
+    campaignName: r.campaignId ? (campaignNameMap.get(r.campaignId) ?? null) : null,
+  }));
+
+  res.json(enriched);
 });
 
 // ─── GET /api/outreach-operations/metrics ─────────────────────────────────────

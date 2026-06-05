@@ -365,6 +365,8 @@ export interface ApiOutreachOperation {
   id: string;
   targetId: string | null;
   productId: string | null;
+  campaignId: string | null;
+  campaignName: string | null;
   creatorName: string;
   contactMethod: OutreachContactMethod;
   contactDestination: string | null;
@@ -822,6 +824,7 @@ export interface ApiCampaignCreator {
   updatedAt: string;
   targetStatus: string | null;
   contactReadiness: number | null;
+  outreachCount: number;
 }
 
 export interface ApiCampaignDetail extends ApiCampaign {
@@ -924,6 +927,42 @@ export const updateCampaignCreator = (
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+
+export interface BulkAddCreatorItem {
+  creatorName: string;
+  targetId?: string;
+  deliverables?: string[];
+  estimatedValue?: number;
+  notes?: string;
+}
+
+export interface BulkAddResult {
+  added: number;
+  skipped: number;
+  errors: string[];
+}
+
+export const bulkAddCampaignCreators = (
+  campaignId: string,
+  creators: BulkAddCreatorItem[],
+): Promise<BulkAddResult> =>
+  request<BulkAddResult>(`/campaigns/${campaignId}/bulk-add-creators`, {
+    method: "POST",
+    body: JSON.stringify({ creators }),
+  });
+
+export interface ApiCampaignTimelineEvent {
+  id: string;
+  type: string;
+  label: string;
+  detail: string | null;
+  date: string;
+}
+
+export const fetchCampaignTimeline = (
+  campaignId: string,
+): Promise<ApiCampaignTimelineEvent[]> =>
+  request<ApiCampaignTimelineEvent[]>(`/campaigns/${campaignId}/timeline`);
 
 // ─── YouTube Discovery ────────────────────────────────────────────────────────
 

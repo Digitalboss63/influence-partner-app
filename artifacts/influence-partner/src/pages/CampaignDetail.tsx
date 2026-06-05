@@ -14,19 +14,22 @@ import {
   Pencil,
   Check,
   X,
-  Trash2,
-  ChevronDown,
-  ChevronUp,
   HelpCircle,
   CircleDot,
   CheckCircle2,
   PauseCircle,
   XCircle,
+  Clock,
+  UserPlus,
+  Activity,
+  MessageSquare,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -47,15 +50,18 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   fetchCampaign,
+  fetchCampaignTimeline,
   updateCampaign,
   addCampaignCreator,
   updateCampaignCreator,
+  bulkAddCampaignCreators,
+  getTargets,
   type ApiCampaignDetail,
   type ApiCampaignCreator,
+  type ApiCampaignTimelineEvent,
   type CampaignStatus,
   type AssignmentStatus,
 } from "@/lib/api-client";
-import { getTargets } from "@/lib/api-client";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -72,6 +78,17 @@ function fmtDate(s: string | null) {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function relativeTime(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 const CAMPAIGN_STATUS_OPTIONS: CampaignStatus[] = [
@@ -126,6 +143,24 @@ const DELIVERABLE_OPTIONS = [
   "Review",
   "Custom",
 ];
+
+const TIMELINE_EVENT_ICONS: Record<string, React.ElementType> = {
+  campaign_created: Megaphone,
+  creator_assigned: UserPlus,
+  creator_status_changed: Activity,
+  outreach_sent: Send,
+  outreach_replied: MessageSquare,
+  outreach_activity: Activity,
+};
+
+const TIMELINE_EVENT_COLORS: Record<string, string> = {
+  campaign_created: "text-blue-600 bg-blue-50 border-blue-200",
+  creator_assigned: "text-violet-600 bg-violet-50 border-violet-200",
+  creator_status_changed: "text-amber-600 bg-amber-50 border-amber-200",
+  outreach_sent: "text-teal-600 bg-teal-50 border-teal-200",
+  outreach_replied: "text-emerald-600 bg-emerald-50 border-emerald-200",
+  outreach_activity: "text-orange-600 bg-orange-50 border-orange-200",
+};
 
 // ─── Add Creator Dialog ────────────────────────────────────────────────────────
 
@@ -182,6 +217,7 @@ function AddCreatorDialog({
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["campaign", campaignId] });
+      qc.invalidateQueries({ queryKey: ["campaign-timeline", campaignId] });
       toast({ title: "Creator assigned to campaign" });
       onAdded();
       setForm({
@@ -314,6 +350,193 @@ function AddCreatorDialog({
   );
 }
 
+// ─── Bulk Assign Dialog ────────────────────────────────────────────────────────
+
+interface BulkAssignDialogProps {
+  campaignId: string;
+  existingNames: Set<string>;
+  existingTargetIds: Set<string>;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onAdded: () => void;
+}
+
+function BulkAssignDialog({
+  campaignId,
+  existingNames,
+  existingTargetIds,
+  open,
+  onOpenChange,
+  onAdded,
+}: BulkAssignDialogProps) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
+
+  const { data: targets = [], isLoading: loadingTargets } = useQuery({
+    queryKey: ["targets"],
+    queryFn: () => getTargets(),
+    enabled: open,
+  });
+
+  const available = targets.filter((t) => {
+    const alreadyById = existingTargetIds.has(t.id);
+    const alreadyByName = existingNames.has(t.name.toLowerCase());
+    if (alreadyById || alreadyByName) return false;
+    if (!search) return true;
+    return (
+      t.name.toLowerCase().includes(search.toLowerCase()) ||
+      (t.company ?? "").toLowerCase().includes(search.toLowerCase())
+    );
+  });
+
+  const toggleTarget = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      const creators = targets
+        .filter((t) => selected.has(t.id))
+        .map((t) => ({
+          creatorName: t.name,
+          targetId: t.id,
+        }));
+      return bulkAddCampaignCreators(campaignId, creators);
+    },
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ["campaign", campaignId] });
+      qc.invalidateQueries({ queryKey: ["campaign-timeline", campaignId] });
+      qc.invalidateQueries({ queryKey: ["campaigns"] });
+      const msg =
+        result.skipped > 0
+          ? `Added ${result.added} creator${result.added !== 1 ? "s" : ""}, ${result.skipped} already assigned.`
+          : `Added ${result.added} creator${result.added !== 1 ? "s" : ""}.`;
+      toast({ title: msg });
+      setSelected(new Set());
+      setSearch("");
+      onAdded();
+    },
+    onError: (e: Error) => {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) {
+          setSelected(new Set());
+          setSearch("");
+        }
+        onOpenChange(v);
+      }}
+    >
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Bulk Assign from Targets</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <Input
+            placeholder="Search targets…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-8 text-sm"
+          />
+
+          {loadingTargets ? (
+            <div className="flex items-center justify-center py-8 text-muted-foreground text-sm gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading targets…
+            </div>
+          ) : available.length === 0 ? (
+            <div className="text-center py-8 text-sm text-muted-foreground">
+              {targets.length === 0
+                ? "No targets found. Add targets in the Targets section first."
+                : search
+                ? "No targets match your search."
+                : "All available targets are already assigned to this campaign."}
+            </div>
+          ) : (
+            <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
+              {available.map((t) => (
+                <label
+                  key={t.id}
+                  className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                    selected.has(t.id)
+                      ? "border-primary/60 bg-primary/5"
+                      : "border-border/60 hover:border-border"
+                  }`}
+                >
+                  <Checkbox
+                    checked={selected.has(t.id)}
+                    onCheckedChange={() => toggleTarget(t.id)}
+                    className="flex-shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{t.name}</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {[t.company, t.platform, t.partnerCategory]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </div>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="text-xs flex-shrink-0 capitalize"
+                  >
+                    {t.status}
+                  </Badge>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {selected.size > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {selected.size} target{selected.size !== 1 ? "s" : ""} selected.
+              All will be added with status: <strong>Identified</strong>.
+            </p>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setSelected(new Set());
+              onOpenChange(false);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => mutation.mutate()}
+            disabled={selected.size === 0 || mutation.isPending}
+          >
+            {mutation.isPending ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                Adding…
+              </>
+            ) : (
+              `Add ${selected.size} Creator${selected.size !== 1 ? "s" : ""}`
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Creator Row ──────────────────────────────────────────────────────────────
 
 function CreatorRow({ creator }: { creator: ApiCampaignCreator }) {
@@ -335,6 +558,7 @@ function CreatorRow({ creator }: { creator: ApiCampaignCreator }) {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["campaign", creator.campaignId] });
+      qc.invalidateQueries({ queryKey: ["campaign-timeline", creator.campaignId] });
       toast({ title: "Updated" });
       setEditing(false);
     },
@@ -376,6 +600,16 @@ function CreatorRow({ creator }: { creator: ApiCampaignCreator }) {
                 ))}
               </SelectContent>
             </Select>
+          )}
+          {creator.targetId && (
+            <span className="text-xs text-muted-foreground/70" title="Linked to Target record">
+              🔗
+            </span>
+          )}
+          {creator.outreachCount > 0 && (
+            <span className="text-xs text-muted-foreground border border-border/60 rounded-full px-2 py-0.5 bg-muted">
+              {creator.outreachCount} outreach
+            </span>
           )}
         </div>
         {creator.deliverables && creator.deliverables.length > 0 && (
@@ -465,6 +699,65 @@ function CreatorRow({ creator }: { creator: ApiCampaignCreator }) {
   );
 }
 
+// ─── Timeline Section ──────────────────────────────────────────────────────────
+
+function TimelineSection({ campaignId }: { campaignId: string }) {
+  const { data: events = [], isLoading } = useQuery<ApiCampaignTimelineEvent[]>({
+    queryKey: ["campaign-timeline", campaignId],
+    queryFn: () => fetchCampaignTimeline(campaignId),
+    enabled: !!campaignId,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 py-6 text-muted-foreground text-sm">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Loading timeline…
+      </div>
+    );
+  }
+
+  if (events.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground py-4 text-center border border-dashed rounded-lg">
+        No activity yet.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {events.map((event) => {
+        const Icon = TIMELINE_EVENT_ICONS[event.type] ?? Activity;
+        const colorClass =
+          TIMELINE_EVENT_COLORS[event.type] ??
+          "text-muted-foreground bg-muted border-muted-foreground/30";
+        return (
+          <div key={event.id} className="flex items-start gap-3">
+            <div
+              className={`w-7 h-7 rounded-full border flex items-center justify-center flex-shrink-0 mt-0.5 ${colorClass}`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+            </div>
+            <div className="flex-1 min-w-0 pt-0.5">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-sm font-medium">{event.label}</span>
+                <span className="text-xs text-muted-foreground flex-shrink-0 flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  {relativeTime(event.date)}
+                </span>
+              </div>
+              {event.detail && (
+                <p className="text-xs text-muted-foreground">{event.detail}</p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Section wrapper ──────────────────────────────────────────────────────────
 
 function Section({
@@ -500,6 +793,7 @@ export default function CampaignDetail() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [addCreatorOpen, setAddCreatorOpen] = useState(false);
+  const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
   const [editingStatus, setEditingStatus] = useState(false);
   const [newStatus, setNewStatus] = useState<CampaignStatus>("planning");
   const [editingNotes, setEditingNotes] = useState(false);
@@ -528,7 +822,10 @@ export default function CampaignDetail() {
 
   if (isLoading) {
     return (
-      <div className="p-6 text-muted-foreground text-sm">Loading campaign…</div>
+      <div className="p-6 flex items-center gap-2 text-muted-foreground text-sm">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Loading campaign…
+      </div>
     );
   }
   if (!campaign) {
@@ -564,6 +861,14 @@ export default function CampaignDetail() {
 
   const contractedCreators = campaign.creators.filter((cc) =>
     ["contracted", "completed"].includes(cc.assignmentStatus),
+  );
+
+  // Sets for duplicate detection in dialogs
+  const assignedNames = new Set(
+    campaign.creators.map((cc) => cc.creatorName.toLowerCase()),
+  );
+  const assignedTargetIds = new Set(
+    campaign.creators.map((cc) => cc.targetId).filter((t): t is string => !!t),
   );
 
   return (
@@ -694,25 +999,47 @@ export default function CampaignDetail() {
         icon={Users}
         title={`Assigned Creators (${campaign.creators.length})`}
         action={
-          <Button
-            size="sm"
-            className="gap-1.5"
-            onClick={() => setAddCreatorOpen(true)}
-          >
-            <Plus className="w-4 h-4" />
-            Assign Creator
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              onClick={() => setBulkAssignOpen(true)}
+            >
+              <UserPlus className="w-4 h-4" />
+              Bulk Assign
+            </Button>
+            <Button
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setAddCreatorOpen(true)}
+            >
+              <Plus className="w-4 h-4" />
+              Assign Creator
+            </Button>
+          </div>
         }
       >
         {campaign.creators.length === 0 ? (
-          <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-lg">
-            No creators assigned yet.{" "}
-            <button
-              className="text-primary hover:underline"
-              onClick={() => setAddCreatorOpen(true)}
-            >
-              Assign one
-            </button>
+          <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-lg space-y-2">
+            <Users className="w-8 h-8 mx-auto text-muted-foreground/30" />
+            <p>No creators assigned yet.</p>
+            <div className="flex gap-2 justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setBulkAssignOpen(true)}
+              >
+                Bulk assign from Targets
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setAddCreatorOpen(true)}
+              >
+                Add one manually
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="space-y-2">
@@ -766,7 +1093,8 @@ export default function CampaignDetail() {
           ))}
         </div>
         <p className="text-xs text-muted-foreground">
-          Rolled up from Outreach Operations for creators assigned to this campaign.
+          Rolled up from Outreach Operations. Where a target ID is linked, the
+          match is stable; otherwise matched by creator name.
         </p>
       </Section>
 
@@ -903,6 +1231,11 @@ export default function CampaignDetail() {
         </div>
       </Section>
 
+      {/* Activity Timeline */}
+      <Section icon={Activity} title="Activity Timeline">
+        <TimelineSection campaignId={id} />
+      </Section>
+
       {/* Notes */}
       <Section icon={FileText} title="Notes">
         {!editingNotes ? (
@@ -956,6 +1289,15 @@ export default function CampaignDetail() {
         open={addCreatorOpen}
         onOpenChange={setAddCreatorOpen}
         onAdded={() => setAddCreatorOpen(false)}
+      />
+
+      <BulkAssignDialog
+        campaignId={id}
+        existingNames={assignedNames}
+        existingTargetIds={assignedTargetIds}
+        open={bulkAssignOpen}
+        onOpenChange={setBulkAssignOpen}
+        onAdded={() => setBulkAssignOpen(false)}
       />
     </div>
   );

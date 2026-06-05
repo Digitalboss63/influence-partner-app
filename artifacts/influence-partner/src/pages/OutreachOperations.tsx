@@ -21,6 +21,7 @@ import {
   Users,
   TrendingUp,
   Phone,
+  Megaphone,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -433,6 +434,12 @@ function OutreachCard({
               {op.priority !== "medium" && (
                 <span className={`text-xs font-medium ${priorityMeta.color}`}>
                   {priorityMeta.label} Priority
+                </span>
+              )}
+              {op.campaignName && (
+                <span className="flex items-center gap-1 text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-2 py-0.5">
+                  <Megaphone className="w-3 h-3" />
+                  {op.campaignName}
                 </span>
               )}
             </div>
