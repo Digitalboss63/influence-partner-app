@@ -346,3 +346,63 @@ export const insertOutreachMessageSchema = createInsertSchema(
 ).omit({ id: true, createdAt: true });
 export type InsertOutreachMessage = z.infer<typeof insertOutreachMessageSchema>;
 export type OutreachMessage = typeof outreachMessagesTable.$inferSelect;
+
+// ─── Partner Qualifications ───────────────────────────────────────────────────
+
+export const qualificationStatusEnum = pgEnum("qualification_status", [
+  "unreviewed",
+  "qualified",
+  "rejected",
+  "starred",
+  "archived",
+]);
+
+export const qualificationLabelEnum = pgEnum("qualification_label", [
+  "Ready to Pitch",
+  "Promising",
+  "Needs Review",
+  "Not Qualified",
+]);
+
+export const partnerQualificationsTable = pgTable(
+  "partner_qualifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    prospectId: uuid("prospect_id")
+      .notNull()
+      .references(() => partnerProspectsTable.id, { onDelete: "cascade" }),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => productsTable.id, { onDelete: "cascade" }),
+    partnerFitScore: integer("partner_fit_score").notNull(),
+    audienceMatchScore: integer("audience_match_score").notNull(),
+    brandSafetyScore: integer("brand_safety_score").notNull(),
+    partnershipReadinessScore: integer("partnership_readiness_score").notNull(),
+    responseProbabilityScore: integer("response_probability_score").notNull(),
+    contentRelevanceScore: integer("content_relevance_score").notNull(),
+    qualificationLabel: qualificationLabelEnum("qualification_label").notNull(),
+    qualificationStatus: qualificationStatusEnum("qualification_status")
+      .notNull()
+      .default("unreviewed"),
+    hardFlags: jsonb("hard_flags"),
+    scoreReasons: jsonb("score_reasons"),
+    nextBestAction: text("next_best_action").notNull(),
+    contactEmail: text("contact_email"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => ({
+    unq: uniqueIndex("partner_qualifications_prospect_product_unq").on(
+      t.prospectId,
+      t.productId,
+    ),
+  }),
+);
+
+export const insertPartnerQualificationSchema = createInsertSchema(
+  partnerQualificationsTable,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertPartnerQualification = z.infer<typeof insertPartnerQualificationSchema>;
+export type PartnerQualification = typeof partnerQualificationsTable.$inferSelect;
+export type QualificationStatus = typeof qualificationStatusEnum.enumValues[number];
+export type QualificationLabel = typeof qualificationLabelEnum.enumValues[number];

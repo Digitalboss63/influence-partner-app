@@ -242,6 +242,94 @@ export const deleteProspect = (id: string): Promise<{ deleted: boolean; id: stri
     method: "DELETE",
   });
 
+// ─── Partner Qualifications ───────────────────────────────────────────────────
+
+export type QualificationStatus = "unreviewed" | "qualified" | "rejected" | "starred" | "archived";
+export type QualificationLabel = "Ready to Pitch" | "Promising" | "Needs Review" | "Not Qualified";
+
+export interface ScoreReasons {
+  audienceMatch: string[];
+  brandSafety: string[];
+  partnershipReadiness: string[];
+  responseProbability: string[];
+  contentRelevance: string[];
+}
+
+export interface ApiQualification {
+  id: string;
+  prospectId: string;
+  productId: string;
+  partnerFitScore: number;
+  audienceMatchScore: number;
+  brandSafetyScore: number;
+  partnershipReadinessScore: number;
+  responseProbabilityScore: number;
+  contentRelevanceScore: number;
+  qualificationLabel: QualificationLabel;
+  qualificationStatus: QualificationStatus;
+  hardFlags: string[] | null;
+  scoreReasons: ScoreReasons | null;
+  nextBestAction: string;
+  contactEmail: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApiQueueItem {
+  prospect: ApiPartnerProspect;
+  qualification: ApiQualification | null;
+}
+
+export interface ApiQualMetrics {
+  discovered: number;
+  scored: number;
+  readyToPitch: number;
+  promising: number;
+  needsReview: number;
+  notQualified: number;
+  starred: number;
+  rejected: number;
+  approved: number;
+  targets: number;
+}
+
+export const getQualificationQueue = (productId: string): Promise<ApiQueueItem[]> =>
+  request<ApiQueueItem[]>(`/qualification/queue?productId=${productId}`);
+
+export const qualifyProspect = (
+  prospectId: string,
+  productId: string,
+): Promise<ApiQualification> =>
+  request<ApiQualification>("/qualification/qualify", {
+    method: "POST",
+    body: JSON.stringify({ prospectId, productId }),
+  });
+
+export const qualifyBatch = (productId: string): Promise<{ qualified: number; qualifications: ApiQualification[] }> =>
+  request<{ qualified: number; qualifications: ApiQualification[] }>("/qualification/qualify-batch", {
+    method: "POST",
+    body: JSON.stringify({ productId }),
+  });
+
+export const updateQualificationStatus = (
+  id: string,
+  status: QualificationStatus,
+): Promise<ApiQualification> =>
+  request<ApiQualification>(`/qualification/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+
+export const approveQualification = (
+  id: string,
+): Promise<{ target: ApiPartnerTarget; qualificationId: string }> =>
+  request<{ target: ApiPartnerTarget; qualificationId: string }>(`/qualification/${id}/approve`, {
+    method: "POST",
+  });
+
+export const getQualificationMetrics = (productId: string): Promise<ApiQualMetrics> =>
+  request<ApiQualMetrics>(`/qualification/metrics?productId=${productId}`);
+
 // ─── YouTube Discovery ────────────────────────────────────────────────────────
 
 export interface YouTubeChannel {

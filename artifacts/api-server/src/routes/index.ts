@@ -7,6 +7,7 @@ import outreachRouter from "./outreach";
 import targetsRouter from "./targets";
 import prospectsRouter from "./prospects";
 import youtubeRouter from "./youtube";
+import qualificationRouter from "./qualification";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(outreachRouter);
 router.use(targetsRouter);
 router.use(prospectsRouter);
 router.use(youtubeRouter);
+router.use(qualificationRouter);
 
 export default router;
