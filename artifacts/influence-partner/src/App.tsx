@@ -29,6 +29,8 @@ import Campaigns from "@/pages/Campaigns";
 import CampaignDetail from "@/pages/CampaignDetail";
 import HelpCampaignManagement from "@/pages/HelpCampaignManagement";
 import ResearchOutreach from "@/pages/ResearchOutreach";
+import CampaignLaunchWizard from "@/pages/CampaignLaunchWizard";
+import HelpCampaignLaunch from "@/pages/HelpCampaignLaunch";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -61,6 +63,8 @@ function Router() {
         <Route path="/campaigns/:id" component={CampaignDetail} />
         <Route path="/campaigns" component={Campaigns} />
         <Route path="/help/campaign-management" component={HelpCampaignManagement} />
+        <Route path="/campaign-launch" component={CampaignLaunchWizard} />
+        <Route path="/help/campaign-launch" component={HelpCampaignLaunch} />
         <Route path="/research-outreach" component={ResearchOutreach} />
         <Route component={NotFound} />
       </Switch>
