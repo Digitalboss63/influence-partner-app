@@ -65,6 +65,8 @@ import {
   type CampaignStatus,
   type AssignmentStatus,
   type DeliverableType,
+  type ExclusivityType,
+  type ExclusivityStatus,
 } from "@/lib/api-client";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -684,6 +686,37 @@ function BulkAssignDialog({
 
 // ─── Creator Row ──────────────────────────────────────────────────────────────
 
+const EXCLUSIVITY_TYPE_OPTIONS: ExclusivityType[] = ["none", "soft", "full"];
+const EXCLUSIVITY_STATUS_OPTIONS: ExclusivityStatus[] = [
+  "not_eligible",
+  "eligible_for_review",
+  "under_review",
+  "approved",
+  "declined",
+  "expired",
+];
+const EXCLUSIVITY_TYPE_LABELS: Record<ExclusivityType, string> = {
+  none: "None",
+  soft: "Soft",
+  full: "Full",
+};
+const EXCLUSIVITY_STATUS_LABELS: Record<ExclusivityStatus, string> = {
+  not_eligible: "Not Eligible",
+  eligible_for_review: "Eligible for Review",
+  under_review: "Under Review",
+  approved: "Approved",
+  declined: "Declined",
+  expired: "Expired",
+};
+const EXCLUSIVITY_STATUS_COLORS: Record<ExclusivityStatus, string> = {
+  not_eligible: "bg-slate-50 text-slate-500 border-slate-200",
+  eligible_for_review: "bg-blue-50 text-blue-700 border-blue-200",
+  under_review: "bg-amber-50 text-amber-700 border-amber-200",
+  approved: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  declined: "bg-red-50 text-red-600 border-red-200",
+  expired: "bg-slate-50 text-slate-500 border-slate-200",
+};
+
 function CreatorRow({ creator }: { creator: ApiCampaignCreator }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -697,6 +730,19 @@ function CreatorRow({ creator }: { creator: ApiCampaignCreator }) {
   const [dueDate, setDueDate] = useState(
     creator.deliverableDueDate ? creator.deliverableDueDate.split("T")[0] : "",
   );
+  const [exclType, setExclType] = useState<ExclusivityType>(
+    creator.exclusivityType ?? "none",
+  );
+  const [exclStatus, setExclStatus] = useState<ExclusivityStatus>(
+    creator.exclusivityStatus ?? "not_eligible",
+  );
+  const [exclStart, setExclStart] = useState(
+    creator.exclusivityStartDate ? creator.exclusivityStartDate.split("T")[0] : "",
+  );
+  const [exclEnd, setExclEnd] = useState(
+    creator.exclusivityEndDate ? creator.exclusivityEndDate.split("T")[0] : "",
+  );
+  const [exclNotes, setExclNotes] = useState(creator.exclusivityNotes ?? "");
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -706,6 +752,11 @@ function CreatorRow({ creator }: { creator: ApiCampaignCreator }) {
         deliverableDueDate: dueDate || undefined,
         actualValue: Number(actual),
         notes: notes || undefined,
+        exclusivityType: exclType,
+        exclusivityStatus: exclStatus,
+        exclusivityStartDate: exclStart || undefined,
+        exclusivityEndDate: exclEnd || undefined,
+        exclusivityNotes: exclNotes || undefined,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["campaign", creator.campaignId] });
@@ -763,6 +814,15 @@ function CreatorRow({ creator }: { creator: ApiCampaignCreator }) {
               className="text-xs px-2 py-0.5 capitalize bg-amber-50 text-amber-700 border-amber-200"
             >
               {creator.deliverableType}
+            </Badge>
+          )}
+          {!editing && creator.exclusivityType !== "none" && (
+            <Badge
+              variant="outline"
+              className={`text-xs px-2 py-0.5 ${EXCLUSIVITY_STATUS_COLORS[creator.exclusivityStatus]}`}
+            >
+              {EXCLUSIVITY_TYPE_LABELS[creator.exclusivityType]} excl ·{" "}
+              {EXCLUSIVITY_STATUS_LABELS[creator.exclusivityStatus]}
             </Badge>
           )}
           {creator.targetId && (
@@ -850,6 +910,75 @@ function CreatorRow({ creator }: { creator: ApiCampaignCreator }) {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
+            {/* Exclusivity section */}
+            <div className="pt-1 border-t border-border/60">
+              <p className="text-xs font-medium text-muted-foreground mb-1.5">Exclusivity</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs">Type</Label>
+                  <Select
+                    value={exclType}
+                    onValueChange={(v) => setExclType(v as ExclusivityType)}
+                  >
+                    <SelectTrigger className="h-7 text-xs mt-0.5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {EXCLUSIVITY_TYPE_OPTIONS.map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {EXCLUSIVITY_TYPE_LABELS[t]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Status</Label>
+                  <Select
+                    value={exclStatus}
+                    onValueChange={(v) => setExclStatus(v as ExclusivityStatus)}
+                  >
+                    <SelectTrigger className="h-7 text-xs mt-0.5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {EXCLUSIVITY_STATUS_OPTIONS.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {EXCLUSIVITY_STATUS_LABELS[s]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Start Date</Label>
+                  <Input
+                    type="date"
+                    className="h-7 text-xs mt-0.5"
+                    value={exclStart}
+                    onChange={(e) => setExclStart(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">End Date</Label>
+                  <Input
+                    type="date"
+                    className="h-7 text-xs mt-0.5"
+                    value={exclEnd}
+                    onChange={(e) => setExclEnd(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="mt-1.5">
+                <Label className="text-xs">Exclusivity Notes</Label>
+                <Input
+                  className="h-7 text-xs mt-0.5"
+                  placeholder="Terms, conditions…"
+                  value={exclNotes}
+                  onChange={(e) => setExclNotes(e.target.value)}
+                />
+              </div>
+            </div>
           </div>
         )}
         {!editing && creator.notes && (
@@ -917,6 +1046,19 @@ function CreatorRow({ creator }: { creator: ApiCampaignCreator }) {
                     ? creator.deliverableDueDate.split("T")[0]
                     : "",
                 );
+                setExclType(creator.exclusivityType ?? "none");
+                setExclStatus(creator.exclusivityStatus ?? "not_eligible");
+                setExclStart(
+                  creator.exclusivityStartDate
+                    ? creator.exclusivityStartDate.split("T")[0]
+                    : "",
+                );
+                setExclEnd(
+                  creator.exclusivityEndDate
+                    ? creator.exclusivityEndDate.split("T")[0]
+                    : "",
+                );
+                setExclNotes(creator.exclusivityNotes ?? "");
               }}
             >
               <X className="w-3 h-3" />

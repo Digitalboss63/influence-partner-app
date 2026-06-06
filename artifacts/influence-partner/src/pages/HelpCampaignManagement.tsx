@@ -335,6 +335,56 @@ export default function HelpCampaignManagement() {
         </p>
       </Section>
 
+      <Section id="exclusivity" title="12. Understanding exclusivity">
+        <p className="text-sm text-muted-foreground">
+          Exclusivity is not available to new partners. Partners may become eligible for
+          exclusivity review after demonstrating measurable performance and sustained
+          participation. All exclusivity arrangements are reviewed individually and may
+          include performance requirements, time limitations, and renewal conditions.
+        </p>
+        <div className="space-y-2 border border-border rounded-lg p-3">
+          <KV
+            k="New partners"
+            v="All creators start with Exclusivity Type = None and Status = Not Eligible. The system does not automatically offer exclusivity."
+          />
+          <KV
+            k="Eligibility review"
+            v="Eligibility is based on demonstrated performance — qualified leads, sales volume, conversion performance, revenue contribution, or sustained campaign participation."
+          />
+          <KV
+            k="Individual review"
+            v="Exclusivity is reviewed on a case-by-case basis. Eligibility review is always initiated by the team, never triggered automatically."
+          />
+          <KV
+            k="Limited term"
+            v="All exclusivity arrangements include defined start and end dates. Exclusivity is not perpetual and must be actively renewed."
+          />
+          <KV
+            k="Performance requirements"
+            v="Approved exclusivity may include performance obligations. Failure to meet them may result in expiration or non-renewal."
+          />
+        </div>
+        <div className="space-y-2 border border-border rounded-lg p-3 mt-2">
+          <p className="text-xs font-medium text-muted-foreground">Exclusivity types</p>
+          <KV k="None" v="Standard partner relationship. No exclusivity applies." />
+          <KV k="Soft" v="Limited exclusivity for a defined category, product type, or campaign period." />
+          <KV k="Full" v="Formal exclusivity agreement with defined term and performance obligations." />
+        </div>
+        <div className="space-y-2 border border-border rounded-lg p-3 mt-2">
+          <p className="text-xs font-medium text-muted-foreground">Exclusivity statuses</p>
+          <KV k="Not Eligible" v="Default for all new partners." />
+          <KV k="Eligible for Review" v="Partner has demonstrated qualifying performance. Review may be initiated." />
+          <KV k="Under Review" v="Exclusivity is being actively evaluated." />
+          <KV k="Approved" v="Exclusivity granted. Start and end dates apply." />
+          <KV k="Declined" v="Review concluded without granting exclusivity." />
+          <KV k="Expired" v="A previously approved arrangement has lapsed." />
+        </div>
+        <p className="text-sm text-muted-foreground">
+          To update a creator's exclusivity status, click the pencil icon on their row in
+          the campaign detail page and expand the Exclusivity section.
+        </p>
+      </Section>
+
       <Section id="limits" title="11. Current limitations">
         <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1 pl-2">
           <li>

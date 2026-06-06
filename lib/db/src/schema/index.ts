@@ -665,6 +665,21 @@ export const deliverableTypeEnum = pgEnum("deliverable_type", [
   "custom",
 ]);
 
+export const exclusivityTypeEnum = pgEnum("exclusivity_type", [
+  "none",
+  "soft",
+  "full",
+]);
+
+export const exclusivityStatusEnum = pgEnum("exclusivity_status", [
+  "not_eligible",
+  "eligible_for_review",
+  "under_review",
+  "approved",
+  "declined",
+  "expired",
+]);
+
 export const campaignsTable = pgTable("campaigns", {
   id: uuid("id").primaryKey().defaultRandom(),
   productId: uuid("product_id").references(() => productsTable.id, {
@@ -713,6 +728,12 @@ export const campaignCreatorsTable = pgTable("campaign_creators", {
   estimatedValue: integer("estimated_value").default(0),
   actualValue: integer("actual_value").default(0),
   notes: text("notes"),
+  // ── Exclusivity ──────────────────────────────────────────────────────────
+  exclusivityType: exclusivityTypeEnum("exclusivity_type").notNull().default("none"),
+  exclusivityStatus: exclusivityStatusEnum("exclusivity_status").notNull().default("not_eligible"),
+  exclusivityStartDate: timestamp("exclusivity_start_date"),
+  exclusivityEndDate: timestamp("exclusivity_end_date"),
+  exclusivityNotes: text("exclusivity_notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -723,6 +744,8 @@ export const insertCampaignCreatorSchema = createInsertSchema(
 export type InsertCampaignCreator = z.infer<typeof insertCampaignCreatorSchema>;
 export type CampaignCreator = typeof campaignCreatorsTable.$inferSelect;
 export type AssignmentStatus = typeof assignmentStatusEnum.enumValues[number];
+export type ExclusivityType = typeof exclusivityTypeEnum.enumValues[number];
+export type ExclusivityStatus = typeof exclusivityStatusEnum.enumValues[number];
 
 // ─── Qualification Feedback ───────────────────────────────────────────────────
 

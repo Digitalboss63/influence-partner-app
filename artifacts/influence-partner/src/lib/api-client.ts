@@ -810,6 +810,16 @@ export type AssignmentStatus =
   | "completed"
   | "declined";
 
+export type ExclusivityType = "none" | "soft" | "full";
+
+export type ExclusivityStatus =
+  | "not_eligible"
+  | "eligible_for_review"
+  | "under_review"
+  | "approved"
+  | "declined"
+  | "expired";
+
 export interface ApiCampaign {
   id: string;
   productId: string | null;
@@ -843,6 +853,11 @@ export interface ApiCampaignCreator {
   estimatedValue: number;
   actualValue: number;
   notes: string | null;
+  exclusivityType: ExclusivityType;
+  exclusivityStatus: ExclusivityStatus;
+  exclusivityStartDate: string | null;
+  exclusivityEndDate: string | null;
+  exclusivityNotes: string | null;
   createdAt: string;
   updatedAt: string;
   targetStatus: string | null;
@@ -973,6 +988,11 @@ export const updateCampaignCreator = (
       | "estimatedValue"
       | "actualValue"
       | "notes"
+      | "exclusivityType"
+      | "exclusivityStatus"
+      | "exclusivityStartDate"
+      | "exclusivityEndDate"
+      | "exclusivityNotes"
     >
   >,
 ): Promise<ApiCampaignCreator> =>

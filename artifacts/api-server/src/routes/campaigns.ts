@@ -9,6 +9,8 @@ import {
   creatorPerformanceTable,
   type CampaignType,
   type DeliverableType,
+  type ExclusivityType,
+  type ExclusivityStatus,
 } from "@workspace/db/schema";
 import { eq, inArray, or, sql } from "drizzle-orm";
 
@@ -721,6 +723,20 @@ router.patch("/campaigns/creator/:id", async (req, res) => {
   if (body.actualValue !== undefined)
     patch.actualValue = toNum(body.actualValue);
   if (body.notes !== undefined) patch.notes = toStr(body.notes) || null;
+  if (body.exclusivityType !== undefined)
+    patch.exclusivityType = body.exclusivityType as ExclusivityType;
+  if (body.exclusivityStatus !== undefined)
+    patch.exclusivityStatus = body.exclusivityStatus as ExclusivityStatus;
+  if (body.exclusivityStartDate !== undefined)
+    patch.exclusivityStartDate = body.exclusivityStartDate
+      ? new Date(toStr(body.exclusivityStartDate))
+      : null;
+  if (body.exclusivityEndDate !== undefined)
+    patch.exclusivityEndDate = body.exclusivityEndDate
+      ? new Date(toStr(body.exclusivityEndDate))
+      : null;
+  if (body.exclusivityNotes !== undefined)
+    patch.exclusivityNotes = toStr(body.exclusivityNotes) || null;
 
   patch.updatedAt = new Date();
 
